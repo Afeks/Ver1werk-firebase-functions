@@ -8,7 +8,6 @@ Dieses Projekt verwendet GitHub Actions für automatisches Deployment. Bei jedem
 
 ### Setup für automatisches Deployment
 
-
 1. Erstelle ein Firebase Service Account:
    - Gehe zu Firebase Console > Project Settings > Service Accounts
    - Klicke auf "Generate new private key"
@@ -19,9 +18,21 @@ Dieses Projekt verwendet GitHub Actions für automatisches Deployment. Bei jedem
    - Gehe zu deinem GitHub Repository > Settings > Secrets and variables > Actions
    - Füge folgende Secrets hinzu:
      - `FIREBASE_SERVICE_ACCOUNT`: Der komplette Inhalt der Service Account JSON-Datei (als String einfügen)
+       - **Wichtig**: Kopiere den gesamten JSON-Inhalt inklusive aller Zeilenumbrüche
+       - Die JSON-Datei sollte mit `{` beginnen und mit `}` enden
+       - Beispiel-Format:
+         ```json
+         {
+           "type": "service_account",
+           "project_id": "dein-projekt-id",
+           ...
+         }
+         ```
      - `FIREBASE_PROJECT_ID`: Deine Firebase Projekt-ID (z.B. "ordercat")
    
    **Hinweis**: Der Service Account benötigt die Berechtigung "Firebase Admin SDK Administrator Service Agent" oder "Editor" Rolle, um Functions deployen zu können.
+   
+   **Troubleshooting**: Falls das Deployment fehlschlägt mit "Invalid JSON format", stelle sicher, dass das `FIREBASE_SERVICE_ACCOUNT` Secret den kompletten JSON-Inhalt ohne zusätzliche Escape-Zeichen enthält.
 
 ## Funktionen
 

@@ -32,14 +32,33 @@ jobs:
           project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
           export_default_credentials: true
       
-      - name: Verify Authentication
+      - name: Setup Authentication
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          # Die setup-gcloud Action hat bereits die Authentifizierung eingerichtet
-          # Validiere, dass gcloud authentifiziert ist
-          gcloud auth list
+          # Erstelle Service Account JSON-Datei mit einer Methode, die mehrzeilige JSON korrekt verarbeitet
+          # Verwende base64, falls das Secret base64-kodiert ist, sonst direkt
+          if echo "$FIREBASE_SERVICE_ACCOUNT" | base64 -d > /tmp/service-account-temp.json 2>/dev/null; then
+            mv /tmp/service-account-temp.json $HOME/service-account.json
+          else
+            # Wenn base64 fehlschlägt, schreibe direkt
+            echo "$FIREBASE_SERVICE_ACCOUNT" > $HOME/service-account.json
+          fi
+          chmod 600 $HOME/service-account.json
+          # Validiere JSON-Format
+          if ! python3 -c "import json; json.load(open('$HOME/service-account.json'))" 2>/dev/null; then
+            echo "Error: Invalid JSON format in service account"
+            echo "First 200 chars:"
+            head -c 200 $HOME/service-account.json
+            exit 1
+          fi
+          # Aktiviere die Service Account-Authentifizierung
+          gcloud auth activate-service-account --key-file=$HOME/service-account.json
           # Setze das Projekt explizit
           gcloud config set project ${{ secrets.FIREBASE_PROJECT_ID }}
-          echo "Authentication verified"
+          # Validiere die Authentifizierung
+          gcloud auth list
+          echo "Authentication setup complete"
       
       - name: Build TypeScript
         run: npm run build

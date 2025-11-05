@@ -128,6 +128,8 @@ export async function createDistributedPurchaseForPointOfSale(
       name: item.name,
       price: item.price,
       count: itemCounts.get(docId) || 1,
+      category: item.category,
+      categoryName: item.categoryName,
       selectedExtras: item.selectedExtras || [],
       excludedIngredients: item.excludedIngredients || [],
     });

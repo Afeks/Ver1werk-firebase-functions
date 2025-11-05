@@ -139,6 +139,8 @@ async function loadPurchaseItems(
         name: itemData.name || 'Unknown Item',
         price: itemData.price || 0,
         count: quantity,
+        category: itemData.category,
+        categoryName: itemData.categoryName,
         selectedExtras: selectedExtras,
         excludedIngredients: excludedIngredients,
       });

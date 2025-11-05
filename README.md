@@ -7,48 +7,26 @@ Dieses Repository enthält Firebase Functions für die OrderCat-Anwendung, spezi
 Dieses Projekt verwendet GitHub Actions für automatisches Deployment. Bei jedem Push auf den `main` Branch werden die Functions automatisch auf Firebase deployed.
 
 ### Setup für automatisches Deployment
-
-1. Erstelle ein Firebase Service Account:
-   - Gehe zu Firebase Console > Project Settings > Service Accounts
-   - Klicke auf "Generate new private key"
-   - Lade die JSON-Datei herunter
-   - **Wichtig**: Kopiere den kompletten Inhalt der JSON-Datei (als String)
+ 
+1. Generiere ein Firebase Token:
+   ```bash
+   firebase login:ci
+   ```
+   Dies gibt dir ein Token, das du für GitHub Actions verwenden kannst.
 
 2. Füge GitHub Secrets hinzu:
    - Gehe zu deinem GitHub Repository > Settings > Secrets and variables > Actions
-   - Füge folgende Secrets hinzu:
-     - `FIREBASE_SERVICE_ACCOUNT`: Der komplette Inhalt der Service Account JSON-Datei (als String einfügen)
-       - **Wichtig**: Kopiere den gesamten JSON-Inhalt inklusive aller Zeilenumbrüche
-       - Die JSON-Datei sollte mit `{` beginnen und mit `}` enden
-       - Beispiel-Format:
-         ```json
-         {
-           "type": "service_account",
-           "project_id": "dein-projekt-id",
-           ...
-         }
-         ```
-     - `FIREBASE_PROJECT_ID`: Deine Firebase Projekt-ID (z.B. "ordercat")
+   - Füge folgendes Secret hinzu:
+     - `FIREBASE_TOKEN`: Das Token, das du mit `firebase login:ci` erhalten hast
    
-   **Wichtig - Benötigte Berechtigungen**: Der Service Account benötigt folgende Rollen:
-   - **Firebase Admin SDK Administrator Service Agent** oder **Editor** Rolle
-   - **Service Account User** (iam.serviceAccounts.ActAs) - Diese Rolle ist erforderlich, damit der Service Account die App Engine Service Accounts verwenden kann
-   
-   Um die "Service Account User" Rolle hinzuzufügen:
-   1. Gehe zu [Google Cloud Console IAM](https://console.cloud.google.com/iam-admin/iam)
-   2. Wähle dein Projekt aus
-   3. Finde deinen Service Account in der Liste
-   4. Klicke auf "Bearbeiten" (Stift-Symbol)
-   5. Füge die Rolle "Service Account User" hinzu
-   6. Speichere die Änderungen
-   
-   **Troubleshooting**: Falls das Deployment fehlschlägt mit "Invalid JSON format", stelle sicher, dass das `FIREBASE_SERVICE_ACCOUNT` Secret den kompletten JSON-Inhalt ohne zusätzliche Escape-Zeichen enthält.
+   **Hinweis**: Der `--token` Parameter ist zwar deprecated, funktioniert aber zuverlässig. Firebase wird in Zukunft die Verwendung von `GOOGLE_APPLICATION_CREDENTIALS` empfehlen, aber für jetzt ist die Token-Methode die einfachste und zuverlässigste Lösung.
 
 ## Funktionen
 
 ### `distributeOrderFunction`
 
-Eine Callable Function, die eine Bestellung auf verschiedene Points of Sale verteilt basierend auf dem `DistributionMode`.
+Eine Callable Function, die ein
+Bestellung auf verschiedene Points of Sale verteilt basierend auf dem `DistributionMode`.
 
 **Verwendung:** Manuell über HTTP/API
 

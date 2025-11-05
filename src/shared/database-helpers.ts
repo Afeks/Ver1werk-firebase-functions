@@ -139,11 +139,11 @@ export async function createDistributedPurchaseForPointOfSale(
 
     batch.set(itemRef, {
       id: item.id,
-      name: item.name,
-      price: item.price,
+      name: item.name || null,
+      price: item.price || null,
       count: itemCounts.get(docId) || 1,
-      category: item.category,
-      categoryName: item.categoryName,
+      category: item.category || null,
+      categoryName: item.categoryName || null,
       selectedExtras: item.selectedExtras || [],
       excludedIngredients: item.excludedIngredients || [],
     });

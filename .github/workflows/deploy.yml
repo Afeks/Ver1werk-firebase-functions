@@ -36,22 +36,36 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          # Erstelle Service Account JSON-Datei mit einer Methode, die mehrzeilige JSON korrekt verarbeitet
-          # Verwende base64, falls das Secret base64-kodiert ist, sonst direkt
-          if echo "$FIREBASE_SERVICE_ACCOUNT" | base64 -d > /tmp/service-account-temp.json 2>/dev/null; then
-            mv /tmp/service-account-temp.json $HOME/service-account.json
-          else
-            # Wenn base64 fehlschlägt, schreibe direkt
-            echo "$FIREBASE_SERVICE_ACCOUNT" > $HOME/service-account.json
+          # Prüfe, ob das Secret gesetzt ist
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "Error: FIREBASE_SERVICE_ACCOUNT secret is not set or empty"
+            exit 1
           fi
+          
+          # Erstelle Service Account JSON-Datei
+          # Verwende printf, um mehrzeilige Inhalte korrekt zu schreiben
+          printf '%s\n' "$FIREBASE_SERVICE_ACCOUNT" > $HOME/service-account.json
           chmod 600 $HOME/service-account.json
+          
+          # Prüfe, ob die Datei erstellt wurde und nicht leer ist
+          if [ ! -s "$HOME/service-account.json" ]; then
+            echo "Error: Service account file is empty"
+            exit 1
+          fi
+          
           # Validiere JSON-Format
           if ! python3 -c "import json; json.load(open('$HOME/service-account.json'))" 2>/dev/null; then
             echo "Error: Invalid JSON format in service account"
-            echo "First 200 chars:"
-            head -c 200 $HOME/service-account.json
+            echo "File size: $(wc -c < $HOME/service-account.json) bytes"
+            echo "First 200 chars of file:"
+            head -c 200 $HOME/service-account.json || echo "(file is empty)"
+            echo ""
+            echo "First 200 chars of secret (masked):"
+            echo "$FIREBASE_SERVICE_ACCOUNT" | head -c 200 || echo "(secret is empty)"
             exit 1
           fi
+          
+          echo "Service account file created successfully"
           # Aktiviere die Service Account-Authentifizierung
           gcloud auth activate-service-account --key-file=$HOME/service-account.json
           # Setze das Projekt explizit

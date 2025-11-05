@@ -32,32 +32,24 @@ jobs:
           project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
           export_default_credentials: true
       
-      - name: Setup Firebase Service Account
-        run: |
-          # Die setup-gcloud Action erstellt bereits die Service Account-Datei
-          # Wir verwenden die GOOGLE_APPLICATION_CREDENTIALS, die von setup-gcloud gesetzt wird
-          export GOOGLE_APPLICATION_CREDENTIALS="${{ env.GOOGLE_APPLICATION_CREDENTIALS }}"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=${{ env.GOOGLE_APPLICATION_CREDENTIALS }}" >> $GITHUB_ENV
-          # Generiere ein Access Token für Firebase
-          export FIREBASE_TOKEN=$(gcloud auth print-access-token)
-          echo "FIREBASE_TOKEN=$FIREBASE_TOKEN" >> $GITHUB_ENV
-      
       - name: Build TypeScript
         run: npm run build
       
       - name: Deploy to Firebase
         env:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          FIREBASE_TOKEN: ${{ env.FIREBASE_TOKEN }}
         run: |
           if [ -z "$FIREBASE_PROJECT_ID" ]; then
             echo "Error: FIREBASE_PROJECT_ID secret is not set"
             exit 1
           fi
+          echo "Deploying to project: $FIREBASE_PROJECT_ID"
+          # Generiere ein Access Token für Firebase
+          FIREBASE_TOKEN=$(gcloud auth print-access-token)
           if [ -z "$FIREBASE_TOKEN" ]; then
-            echo "Error: FIREBASE_TOKEN is not set"
+            echo "Error: Failed to generate Firebase token"
             exit 1
           fi
-          echo "Deploying to project: $FIREBASE_PROJECT_ID"
+          echo "Token generated successfully"
           firebase deploy --only functions --project "$FIREBASE_PROJECT_ID" --token "$FIREBASE_TOKEN"
 

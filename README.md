@@ -7,7 +7,6 @@ Dieses Repository enthält Firebase Functions für die OrderCat-Anwendung, spezi
 Dieses Projekt verwendet GitHub Actions für automatisches Deployment. Bei jedem Push auf den `main` Branch werden die Functions automatisch auf Firebase deployed.
 
 ### Setup für automatisches Deployment
- 
 
 1. Generiere ein Firebase Token:
    ```bash

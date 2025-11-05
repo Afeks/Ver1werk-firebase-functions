@@ -44,8 +44,7 @@ jobs:
       
       - name: Deploy to Firebase
         env:
-          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           GOOGLE_APPLICATION_CREDENTIALS: $HOME/firebase-service-account.json
         run: |
-          firebase deploy --only functions --project $FIREBASE_PROJECT_ID
+          firebase deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID }}
 

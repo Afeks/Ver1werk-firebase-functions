@@ -33,41 +33,24 @@ jobs:
           export_default_credentials: true
       
       - name: Setup Authentication
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          # Prüfe, ob das Secret gesetzt ist
-          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
-            echo "Error: FIREBASE_SERVICE_ACCOUNT secret is not set or empty"
-            exit 1
+          # Die setup-gcloud Action hat bereits die Authentifizierung eingerichtet
+          # Prüfe, ob GOOGLE_APPLICATION_CREDENTIALS gesetzt ist
+          if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ] && [ -f "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+            echo "Using GOOGLE_APPLICATION_CREDENTIALS: $GOOGLE_APPLICATION_CREDENTIALS"
+            # Aktiviere die Service Account-Authentifizierung explizit
+            gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
+          else
+            echo "Warning: GOOGLE_APPLICATION_CREDENTIALS not found"
+            echo "Trying to activate using gcloud auth list..."
+            # Prüfe, ob bereits authentifiziert
+            if gcloud auth list --filter=status:ACTIVE --format="value(account)" | grep -q .; then
+              echo "Already authenticated with gcloud"
+            else
+              echo "Error: No authentication found. Please check your FIREBASE_SERVICE_ACCOUNT secret."
+              exit 1
+            fi
           fi
-          
-          # Erstelle Service Account JSON-Datei
-          # Verwende printf, um mehrzeilige Inhalte korrekt zu schreiben
-          printf '%s\n' "$FIREBASE_SERVICE_ACCOUNT" > $HOME/service-account.json
-          chmod 600 $HOME/service-account.json
-          
-          # Prüfe, ob die Datei erstellt wurde und nicht leer ist
-          if [ ! -s "$HOME/service-account.json" ]; then
-            echo "Error: Service account file is empty"
-            exit 1
-          fi
-          
-          # Validiere JSON-Format
-          if ! python3 -c "import json; json.load(open('$HOME/service-account.json'))" 2>/dev/null; then
-            echo "Error: Invalid JSON format in service account"
-            echo "File size: $(wc -c < $HOME/service-account.json) bytes"
-            echo "First 200 chars of file:"
-            head -c 200 $HOME/service-account.json || echo "(file is empty)"
-            echo ""
-            echo "First 200 chars of secret (masked):"
-            echo "$FIREBASE_SERVICE_ACCOUNT" | head -c 200 || echo "(secret is empty)"
-            exit 1
-          fi
-          
-          echo "Service account file created successfully"
-          # Aktiviere die Service Account-Authentifizierung
-          gcloud auth activate-service-account --key-file=$HOME/service-account.json
           # Setze das Projekt explizit
           gcloud config set project ${{ secrets.FIREBASE_PROJECT_ID }}
           # Validiere die Authentifizierung

@@ -8,7 +8,6 @@ Dieses Projekt verwendet GitHub Actions für automatisches Deployment. Bei jedem
 
 ### Setup für automatisches Deployment
 
-
 1. Erstelle ein Firebase Service Account:
    - Gehe zu Firebase Console > Project Settings > Service Accounts
    - Klicke auf "Generate new private key"

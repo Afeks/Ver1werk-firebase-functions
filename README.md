@@ -8,6 +8,7 @@ Dieses Projekt verwendet GitHub Actions für automatisches Deployment. Bei jedem
 
 ### Setup für automatisches Deployment
  
+
 1. Generiere ein Firebase Token:
    ```bash
    firebase login:ci

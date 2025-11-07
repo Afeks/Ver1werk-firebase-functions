@@ -4,11 +4,37 @@
 
 import * as admin from 'firebase-admin';
 import { PointOfSale, Item, ServingPoint } from './types';
-type ItemWithQuantityField = Item & { quantity?: number };
+type ItemEntry = {
+  quantity?: number;
+  [key: string]: unknown;
+};
+
+type ItemWithQuantityField = Item & {
+  quantity?: number;
+  entries?: ItemEntry[];
+};
 
 function getItemQuantity(item: Item): number {
   const itemWithQuantity = item as ItemWithQuantityField;
-  const rawValue = itemWithQuantity.quantity ?? item.count ?? 1;
+
+  let entriesQuantity: number | undefined;
+  if (Array.isArray(itemWithQuantity.entries)) {
+    const sum = itemWithQuantity.entries.reduce((accumulator, entry) => {
+      const value = Number(entry?.quantity ?? 0);
+      if (!Number.isFinite(value) || value <= 0) {
+        return accumulator;
+      }
+      return accumulator + Math.floor(value);
+    }, 0);
+    entriesQuantity = sum > 0 ? sum : undefined;
+  }
+
+  const rawValue =
+    itemWithQuantity.quantity ??
+    entriesQuantity ??
+    itemWithQuantity.count ??
+    1;
+
   const numericValue = Number(rawValue);
 
   if (!Number.isFinite(numericValue)) {
@@ -144,8 +170,9 @@ export async function createDistributedPurchaseForPointOfSale(
   const itemsCollectionRef = orderRef.collection(COLLECTION_ITEMS);
 
   // Gruppiere Items nach ID, selectedExtras und excludedIngredients
-  const groupedItems: Map<string, { item: Item; count: number }> = new Map();
-  for (const item of items) {
+  const groupedItems: Map<string, { item: ItemWithQuantityField; count: number }> = new Map();
+  for (const rawItem of items as ItemWithQuantityField[]) {
+    const item = rawItem as ItemWithQuantityField;
     const key = `${item.id}_${(item.selectedExtras || []).join(',')}_${(item.excludedIngredients || []).join(',')}`;
     const existing = groupedItems.get(key);
     const quantity = getItemQuantity(item);
@@ -157,9 +184,10 @@ export async function createDistributedPurchaseForPointOfSale(
     if (existing) {
       existing.count += quantity;
     } else {
-      const normalizedItem: Item = {
+      const normalizedItem: ItemWithQuantityField = {
         ...item,
         count: quantity,
+        quantity: quantity,
       };
       groupedItems.set(key, { item: normalizedItem, count: quantity });
     }

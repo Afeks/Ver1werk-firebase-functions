@@ -22,11 +22,37 @@ import { v4 as uuidv4 } from 'uuid';
 /**
  * Verteilt Items auf Points of Sale basierend auf dem DistributionMode
  */
-type ItemWithQuantityField = Item & { quantity?: number };
+type ItemEntry = {
+  quantity?: number;
+  [key: string]: unknown;
+};
+
+type ItemWithQuantityField = Item & {
+  quantity?: number;
+  entries?: ItemEntry[];
+};
 
 function getItemQuantity(item: Item): number {
   const itemWithQuantity = item as ItemWithQuantityField;
-  const rawValue = itemWithQuantity.quantity ?? item.count ?? 1;
+
+  let entriesQuantity: number | undefined;
+  if (Array.isArray(itemWithQuantity.entries)) {
+    const sum = itemWithQuantity.entries.reduce((accumulator, entry) => {
+      const value = Number(entry?.quantity ?? 0);
+      if (!Number.isFinite(value) || value <= 0) {
+        return accumulator;
+      }
+      return accumulator + Math.floor(value);
+    }, 0);
+    entriesQuantity = sum > 0 ? sum : undefined;
+  }
+
+  const rawValue =
+    itemWithQuantity.quantity ??
+    entriesQuantity ??
+    itemWithQuantity.count ??
+    1;
+
   const numericValue = Number(rawValue);
 
   if (!Number.isFinite(numericValue)) {
@@ -63,7 +89,7 @@ async function distributeItems(
 
   if (distributionMode === DistributionMode.BALANCED) {
     // Map, um Items pro Store zu gruppieren
-    const storeOrdersMap: Map<PointOfSale, Item[]> = new Map();
+    const storeOrdersMap: Map<PointOfSale, ItemWithQuantityField[]> = new Map();
 
     console.log(
       `Starting distribution of ${itemList.length} items to ${pointsOfSale.length} stores`
@@ -82,9 +108,10 @@ async function distributeItems(
         continue;
       }
 
-      const normalizedItem: Item = {
+      const normalizedItem: ItemWithQuantityField = {
         ...item,
         count: quantity,
+        quantity: quantity,
       };
       
       // Finde Stores, die dieses Item verfügbar haben

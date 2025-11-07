@@ -123,11 +123,11 @@ Verteilt Items auf den Point of Sale mit der geringsten Anzahl offener Bestellun
 ## Automatische Verteilung
 
 Die Function `onPurchaseCreated` wird automatisch ausgelöst, wenn:
-- Eine neue Bestellung in `Events/{eventId}/Orders/{purchaseId}` erstellt wird
+- Eine Bestellung in `Events/{eventId}/Orders/{purchaseId}` erstellt **oder aktualisiert** wird und dabei `isPaid` von `false`/`undefined` auf `true` wechselt
 - Die Bestellung hat noch kein `distributed: true` Flag
 
 Die Function:
-1. Lädt die Bestelldaten aus Firestore
+1. Lädt die Bestelldaten aus Firestore (inkl. Prüfung auf `isPaid`)
 2. Lädt das ServingPoint basierend auf `servingPointId`
 3. Lädt alle Items aus der `Items` Sub-Collection
 4. Lädt den `distributionMode` aus dem Event
@@ -136,6 +136,7 @@ Die Function:
 
 **Wichtig:** 
 - Die Function verhindert doppelte Verteilung durch das `distributed` Flag.
+- `servingPointId` und die Items müssen bereits beim Setzen von `isPaid = true` vorhanden sein. Werden sie erst danach ergänzt, wird die Bestellung nicht verteilt.
 - **Hinweis zu Extras/Ingredients:** Die Purchase Items Sub-Collection speichert nur `itemId` und `quantity`. `selectedExtras` und `excludedIngredients` werden nicht in der Purchase gespeichert, sondern erst bei der Erstellung der DistributedPurchases. Daher werden diese beim automatischen Trigger nicht berücksichtigt und bleiben leer. Wenn Extras/Ingredients benötigt werden, sollte die manuelle `distributeOrderFunction` verwendet werden.
 
 ## Projektstruktur

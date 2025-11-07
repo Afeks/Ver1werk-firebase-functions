@@ -180,19 +180,39 @@ async function getDistributionMode(eventId: string): Promise<DistributionMode> {
 }
 
 /**
- * Firestore Trigger: Wird ausgelöst wenn eine neue Purchase erstellt wird
+ * Firestore Trigger: Wird ausgelöst, wenn eine Purchase erstellt oder aktualisiert wird
+ * und erstmals den Status "isPaid = true" erhält.
  * 
  * Pfad: Events/{eventId}/Orders/{purchaseId}
  */
 export const onPurchaseCreated = functions
   .region('europe-west1')
   .firestore.document(`${COLLECTION_EVENTS}/{eventId}/${COLLECTION_ORDERS}/{purchaseId}`)
-  .onCreate(async (snapshot, context) => {
-    const purchaseData = snapshot.data();
+  .onWrite(async (change, context) => {
+    const beforeData = change.before.exists ? change.before.data() : undefined;
+    const purchaseData = change.after.exists ? change.after.data() : undefined;
     const eventId = context.params.eventId;
     const purchaseId = context.params.purchaseId;
 
-    console.log(`New purchase created: ${purchaseId} for event: ${eventId}`);
+    if (!purchaseData) {
+      console.log(`Purchase ${purchaseId} for event ${eventId} was deleted. Skipping.`);
+      return null;
+    }
+
+    const wasPaidBefore = beforeData?.isPaid === true;
+    const isPaidNow = purchaseData.isPaid === true;
+
+    if (!isPaidNow) {
+      console.log(`Purchase ${purchaseId} for event ${eventId} is not paid yet. Waiting.`);
+      return null;
+    }
+
+    if (wasPaidBefore) {
+      console.log(`Purchase ${purchaseId} for event ${eventId} was already processed when paid. Skipping.`);
+      return null;
+    }
+
+    console.log(`Purchase ${purchaseId} for event ${eventId} marked as paid. Starting distribution.`);
 
     try {
       // Prüfe ob bereits verteilt wurde (verhindert Re-Triggering)
@@ -242,7 +262,7 @@ export const onPurchaseCreated = functions
 
       if (result.success) {
         // Markiere Purchase als verteilt
-        await snapshot.ref.update({
+        await change.after.ref.update({
           distributed: true,
           distributedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
@@ -261,7 +281,7 @@ export const onPurchaseCreated = functions
       console.error(`Error processing purchase ${purchaseId}:`, error);
       // Optional: Markiere als fehlgeschlagen
       try {
-        await snapshot.ref.update({
+        await change.after.ref.update({
           distributionError: error.message,
           distributionFailed: true,
         });

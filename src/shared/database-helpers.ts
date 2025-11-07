@@ -126,22 +126,27 @@ export async function createDistributedPurchaseForPointOfSale(
   const itemsCollectionRef = orderRef.collection(COLLECTION_ITEMS);
 
   // Gruppiere Items nach ID, selectedExtras und excludedIngredients
-  const itemCounts: Map<string, number> = new Map();
+  const groupedItems: Map<string, { item: Item; count: number }> = new Map();
   for (const item of items) {
-    const uniqueKey = `${item.id}_${(item.selectedExtras || []).join(',')}_${(item.excludedIngredients || []).join(',')}`;
-    itemCounts.set(uniqueKey, (itemCounts.get(uniqueKey) || 0) + 1);
+    const key = `${item.id}_${(item.selectedExtras || []).join(',')}_${(item.excludedIngredients || []).join(',')}`;
+    const existing = groupedItems.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      groupedItems.set(key, { item, count: 1 });
+    }
   }
 
-  // Speichere jedes Item mit seinen Extras und excludedIngredients
-  for (const item of items) {
-    const docId = `${item.id}_${(item.selectedExtras || []).join(',')}_${(item.excludedIngredients || []).join(',')}`;
+  // Speichere jedes Item mit seinen Extras und excludedIngredients (ein Dokument pro Kombination)
+  for (const [docId, { item, count }] of groupedItems.entries()) {
     const itemRef = itemsCollectionRef.doc(docId);
 
     batch.set(itemRef, {
       id: item.id,
       name: item.name || null,
       price: item.price || null,
-      count: itemCounts.get(docId) || 1,
+      count: count,
+      quantity: count,
       category: item.category || null,
       categoryName: item.categoryName || null,
       selectedExtras: item.selectedExtras || [],

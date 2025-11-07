@@ -22,6 +22,24 @@ import { v4 as uuidv4 } from 'uuid';
 /**
  * Verteilt Items auf Points of Sale basierend auf dem DistributionMode
  */
+type ItemWithQuantityField = Item & { quantity?: number };
+
+function getItemQuantity(item: Item): number {
+  const itemWithQuantity = item as ItemWithQuantityField;
+  const rawValue = itemWithQuantity.quantity ?? item.count ?? 1;
+  const numericValue = Number(rawValue);
+
+  if (!Number.isFinite(numericValue)) {
+    return 1;
+  }
+
+  if (numericValue <= 0) {
+    return 0;
+  }
+
+  return Math.floor(numericValue);
+}
+
 async function distributeItems(
   itemList: Item[],
   pointsOfSale: PointOfSale[],
@@ -47,10 +65,27 @@ async function distributeItems(
     // Map, um Items pro Store zu gruppieren
     const storeOrdersMap: Map<PointOfSale, Item[]> = new Map();
 
-    console.log(`Starting distribution of ${itemList.length} items to ${pointsOfSale.length} stores`);
+    console.log(
+      `Starting distribution of ${itemList.length} items to ${pointsOfSale.length} stores`
+    );
 
     for (const item of itemList) {
-      console.log(`Processing item: ${item.id} (${item.name || 'no name'})`);
+      const quantity = getItemQuantity(item);
+      console.log(
+        `Processing item: ${item.id} (${item.name || 'no name'}) with quantity ${quantity}`
+      );
+
+      if (quantity <= 0) {
+        console.warn(
+          `Skipping item ${item.id} (${item.name || 'no name'}) with non-positive quantity ${quantity}`
+        );
+        continue;
+      }
+
+      const normalizedItem: Item = {
+        ...item,
+        count: quantity,
+      };
       
       // Finde Stores, die dieses Item verfügbar haben
       const availableStores = pointsOfSale.filter((store) => {
@@ -86,7 +121,7 @@ async function distributeItems(
         if (!storeOrdersMap.has(leastBusyStore)) {
           storeOrdersMap.set(leastBusyStore, []);
         }
-        storeOrdersMap.get(leastBusyStore)!.push(item);
+        storeOrdersMap.get(leastBusyStore)!.push(normalizedItem);
       } else {
         console.warn(`WARNING: Item ${item.id} (${item.name || 'no name'}) is not available in any store!`);
       }
@@ -96,7 +131,14 @@ async function distributeItems(
 
     // Für jeden Store eine Bestellung erstellen, die alle Items zusammenfasst
     for (const [store, itemsForStore] of storeOrdersMap.entries()) {
-      console.log(`Creating order for store ${store.name} with ${itemsForStore.length} items`);
+      const totalQuantityForStore = itemsForStore.reduce(
+        (sum, currentItem) => sum + getItemQuantity(currentItem),
+        0
+      );
+
+      console.log(
+        `Creating order for store ${store.name} with ${totalQuantityForStore} items`
+      );
       // Erstelle eine Bestellung mit den Items für den Store und der ursprünglichen Bestell-ID
       await createDistributedPurchaseForPointOfSale(
         itemsForStore,
@@ -111,7 +153,7 @@ async function distributeItems(
         pointOfSaleId: store.id,
         pointOfSaleName: store.name,
         orderId: originalOrderId,
-        itemsCount: itemsForStore.length,
+        itemsCount: totalQuantityForStore,
       });
       console.log(`Created distributed purchase for store ${store.name}`);
     }

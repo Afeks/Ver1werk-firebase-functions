@@ -4,6 +4,24 @@
 
 import * as admin from 'firebase-admin';
 import { PointOfSale, Item, ServingPoint } from './types';
+type ItemWithQuantityField = Item & { quantity?: number };
+
+function getItemQuantity(item: Item): number {
+  const itemWithQuantity = item as ItemWithQuantityField;
+  const rawValue = itemWithQuantity.quantity ?? item.count ?? 1;
+  const numericValue = Number(rawValue);
+
+  if (!Number.isFinite(numericValue)) {
+    return 1;
+  }
+
+  if (numericValue <= 0) {
+    return 0;
+  }
+
+  return Math.floor(numericValue);
+}
+
 
 const COLLECTION_EVENTS = 'Events';
 const COLLECTION_POS = 'Points-of-Sale';
@@ -130,10 +148,20 @@ export async function createDistributedPurchaseForPointOfSale(
   for (const item of items) {
     const key = `${item.id}_${(item.selectedExtras || []).join(',')}_${(item.excludedIngredients || []).join(',')}`;
     const existing = groupedItems.get(key);
+    const quantity = getItemQuantity(item);
+
+    if (quantity === 0) {
+      continue;
+    }
+
     if (existing) {
-      existing.count += 1;
+      existing.count += quantity;
     } else {
-      groupedItems.set(key, { item, count: 1 });
+      const normalizedItem: Item = {
+        ...item,
+        count: quantity,
+      };
+      groupedItems.set(key, { item: normalizedItem, count: quantity });
     }
   }
 
@@ -204,9 +232,15 @@ export async function createPurchase(
   // Gruppiere Items nach ID für die Items-Collection
   const itemQuantities: Map<string, number> = new Map();
   for (const item of purchase.items) {
+    const quantity = getItemQuantity(item);
+
+    if (quantity === 0) {
+      continue;
+    }
+
     itemQuantities.set(
       item.id,
-      (itemQuantities.get(item.id) || 0) + 1
+      (itemQuantities.get(item.id) || 0) + quantity
     );
   }
 

@@ -303,37 +303,42 @@ async function notifySoldOutOrders(
     const orderData = orderDoc.data();
     const itemsSnapshot = await orderDoc.ref
       .collection(COLLECTION_ITEMS)
-      .where('id', '==', itemId)
       .get();
 
     if (itemsSnapshot.empty) {
       continue;
     }
 
+    const servingPoint =
+      orderData.servingPointName || orderData.servingPointLocation || null;
+
     const itemNames: Set<string> = new Set();
     let totalPrice = 0;
 
     for (const itemDoc of itemsSnapshot.docs) {
       const itemData = itemDoc.data();
+      if (itemData?.id !== itemId) {
+        continue;
+      }
+
       const count = extractCountFromItem(itemData);
       if (count <= 0) {
         continue;
       }
+
       const price = Number(itemData.price ?? 0);
       if (Number.isFinite(price) && price > 0) {
         totalPrice += price * count;
       }
+
       if (itemData.name) {
         itemNames.add(String(itemData.name));
       }
     }
 
-    if (totalPrice <= 0) {
+    if (totalPrice <= 0 || itemNames.size === 0) {
       continue;
     }
-
-    const servingPoint =
-      orderData.servingPointName || orderData.servingPointLocation || null;
 
     const title =
       itemNames.size === 1
@@ -342,7 +347,7 @@ async function notifySoldOutOrders(
 
     const notificationPayload: NotificationPayload = {
       title,
-      message: 'Geld muss erstattet werden und Bestellung storniert werden.',
+      message: 'Geld muss erstattet und Bestellung storniert werden.',
       pointOfService: servingPoint || undefined,
       price: totalPrice,
       itemId,

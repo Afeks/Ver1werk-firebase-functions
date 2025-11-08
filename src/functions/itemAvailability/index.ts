@@ -157,13 +157,6 @@ async function ensureTargetOrderDocument(
   await targetOrderRef.set(payload, { merge: true });
 }
 
-interface RefundInformation {
-  totalPrice: number;
-  pointOfService: string | null;
-  itemNames: string[];
-  orderIds: string[];
-}
-
 async function transferItemsForOrder(
   eventId: string,
   sourceOrderDoc: FirebaseFirestore.QueryDocumentSnapshot,
@@ -287,11 +280,11 @@ async function transferOpenOrdersForItem(
   return { ordersAffected, itemsMoved: totalMovedItems };
 }
 
-async function collectRefundInformation(
+async function notifySoldOutOrders(
   eventId: string,
   sourcePosId: string,
   itemId: string
-): Promise<RefundInformation> {
+): Promise<void> {
   const db = admin.firestore();
   const ordersSnapshot = await db
     .collection(COLLECTION_EVENTS)
@@ -303,38 +296,24 @@ async function collectRefundInformation(
     .get();
 
   if (ordersSnapshot.empty) {
-    return {
-      totalPrice: 0,
-      pointOfService: null,
-      itemNames: [],
-      orderIds: [],
-    };
+    return;
   }
-
-  let totalPrice = 0;
-  const itemNamesSet: Set<string> = new Set();
-  const orderIds: string[] = [];
-  let pointOfService: string | null = null;
 
   for (const orderDoc of ordersSnapshot.docs) {
     const orderData = orderDoc.data();
-    const orderItemsSnapshot = await orderDoc.ref
+    const itemsSnapshot = await orderDoc.ref
       .collection(COLLECTION_ITEMS)
       .where('id', '==', itemId)
       .get();
 
-    if (orderItemsSnapshot.empty) {
+    if (itemsSnapshot.empty) {
       continue;
     }
 
-    pointOfService =
-      orderData.servingPointName ??
-      orderData.servingPointLocation ??
-      pointOfService;
+    const itemNames: Set<string> = new Set();
+    let totalPrice = 0;
 
-    let orderContainsItem = false;
-
-    for (const itemDoc of orderItemsSnapshot.docs) {
+    for (const itemDoc of itemsSnapshot.docs) {
       const itemData = itemDoc.data();
       const count = extractCountFromItem(itemData);
       if (count <= 0) {
@@ -345,22 +324,43 @@ async function collectRefundInformation(
         totalPrice += price * count;
       }
       if (itemData.name) {
-        itemNamesSet.add(String(itemData.name));
+        itemNames.add(String(itemData.name));
       }
-      orderContainsItem = true;
     }
 
-    if (orderContainsItem) {
-      orderIds.push(orderDoc.id);
+    if (totalPrice <= 0) {
+      continue;
     }
+
+    const servingPoint =
+      orderData.servingPointName || orderData.servingPointLocation || null;
+
+    const title =
+      itemNames.size === 1
+        ? `Artikel ${Array.from(itemNames)[0]} ist ausverkauft`
+        : `Artikel (${Array.from(itemNames).join(', ')}) sind ausverkauft`;
+
+    const notificationPayload: NotificationPayload = {
+      title,
+      message: 'Geld muss erstattet werden und Bestellung storniert werden.',
+      pointOfService: servingPoint || undefined,
+      price: totalPrice,
+      itemId,
+      severity: 'error',
+      isRead: false,
+      action: 'refund',
+    };
+
+    await createNotification(eventId, notificationPayload);
+
+    functions.logger.info('Created order-specific sold-out notification', {
+      eventId,
+      itemId,
+      posId: sourcePosId,
+      orderId: orderDoc.id,
+      refundAmount: totalPrice,
+    });
   }
-
-  return {
-    totalPrice,
-    pointOfService,
-    itemNames: Array.from(itemNamesSet),
-    orderIds,
-  };
 }
 
 export const onPosItemAvailabilityChanged = functions
@@ -427,40 +427,7 @@ export const onPosItemAvailabilityChanged = functions
         }
       );
 
-      const refundInfo = await collectRefundInformation(
-        eventId,
-        posId,
-        itemId
-      );
-
-      if (refundInfo.totalPrice > 0) {
-        const title =
-          refundInfo.itemNames.length === 1
-            ? `Artikel ${refundInfo.itemNames[0]} ist ausverkauft`
-            : `Artikel (${refundInfo.itemNames.join(', ')}) sind ausverkauft`;
-
-        const notificationPayload: NotificationPayload = {
-          title,
-          message:
-            'Geld muss erstattet werden und Bestellung storniert werden.',
-          pointOfService: refundInfo.pointOfService || undefined,
-          price: refundInfo.totalPrice,
-          itemId: itemId,
-          severity: 'error',
-          isRead: false,
-          action: 'refund',
-        };
-
-        await createNotification(eventId, notificationPayload);
-
-        functions.logger.info('Created sold-out notification', {
-          eventId,
-          itemId,
-          posId,
-          refundAmount: refundInfo.totalPrice,
-          orders: refundInfo.orderIds,
-        });
-      }
+      await notifySoldOutOrders(eventId, posId, itemId);
 
       return null;
     }

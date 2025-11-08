@@ -299,6 +299,34 @@ async function notifySoldOutOrders(
     return;
   }
 
+  const availabilityCache: Map<string, boolean> = new Map();
+
+  const ensureAvailability = async (id: string): Promise<boolean> => {
+    if (availabilityCache.has(id)) {
+      return availabilityCache.get(id)!;
+    }
+    if (id === itemId) {
+      availabilityCache.set(id, false);
+      return false;
+    }
+
+    const globalDoc = await db
+      .collection(COLLECTION_EVENTS)
+      .doc(eventId)
+      .collection(COLLECTION_ITEMS)
+      .doc(id)
+      .get();
+
+    const isAvailable =
+      !globalDoc.exists ||
+      (globalDoc.data()?.isAvailable !== undefined
+        ? globalDoc.data()?.isAvailable !== false
+        : true);
+
+    availabilityCache.set(id, isAvailable);
+    return isAvailable;
+  };
+
   for (const orderDoc of ordersSnapshot.docs) {
     const orderData = orderDoc.data();
     const itemsSnapshot = await orderDoc.ref
@@ -309,18 +337,42 @@ async function notifySoldOutOrders(
       continue;
     }
 
+    const orderItems = itemsSnapshot.docs
+      .map((itemDoc) => {
+        const data = itemDoc.data();
+        const id = data?.id;
+        if (!id) {
+          return null;
+        }
+        return { id, data };
+      })
+      .filter((entry): entry is { id: string; data: FirebaseFirestore.DocumentData } => !!entry);
+
+    const uniqueItemIds = Array.from(new Set(orderItems.map((entry) => entry.id)));
+
+    await Promise.all(
+      uniqueItemIds.map(async (id) => {
+        await ensureAvailability(id);
+      })
+    );
+
     const servingPoint =
       orderData.servingPointName || orderData.servingPointLocation || null;
+
+    const soldOutEntries = orderItems.filter((entry) => {
+      const available = availabilityCache.get(entry.id);
+      return available === false;
+    });
+
+    if (soldOutEntries.length === 0) {
+      continue;
+    }
 
     const itemNames: Set<string> = new Set();
     let totalPrice = 0;
 
-    for (const itemDoc of itemsSnapshot.docs) {
-      const itemData = itemDoc.data();
-      if (itemData?.id !== itemId) {
-        continue;
-      }
-
+    for (const entry of soldOutEntries) {
+      const itemData = entry.data;
       const count = extractCountFromItem(itemData);
       if (count <= 0) {
         continue;
@@ -350,7 +402,7 @@ async function notifySoldOutOrders(
       message: 'Geld muss erstattet und Bestellung storniert werden.',
       pointOfService: servingPoint || undefined,
       price: totalPrice,
-      itemId,
+      itemId: soldOutEntries[0]?.id ?? itemId,
       severity: 'error',
       status: 'created',
       action: 'refund',

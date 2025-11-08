@@ -120,6 +120,20 @@ async function ensureTargetOrderDocument(
 ): Promise<void> {
   const targetSnapshot = await targetOrderRef.get();
   if (targetSnapshot.exists) {
+    const updatePayload: FirebaseFirestore.DocumentData = {};
+    const targetData = targetSnapshot.data() ?? {};
+
+    if (targetData.orderStatus !== 'open') {
+      updatePayload.orderStatus = 'open';
+    }
+
+    if (targetData.transferredAt !== undefined) {
+      updatePayload.transferredAt = admin.firestore.FieldValue.delete();
+    }
+
+    if (Object.keys(updatePayload).length > 0) {
+      await targetOrderRef.update(updatePayload);
+    }
     return;
   }
 

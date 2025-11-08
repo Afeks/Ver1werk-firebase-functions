@@ -21,6 +21,9 @@ export async function createNotification(
     pointOfService: payload.pointOfService || null,
     price: payload.price ?? null,
     itemId: payload.itemId || null,
+    severity: payload.severity || 'info',
+    action: payload.action || null,
+    isRead: payload.isRead ?? false,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   };
 

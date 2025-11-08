@@ -446,6 +446,9 @@ export const onPosItemAvailabilityChanged = functions
           pointOfService: refundInfo.pointOfService || undefined,
           price: refundInfo.totalPrice,
           itemId: itemId,
+          severity: 'error',
+          isRead: false,
+          action: 'refund',
         };
 
         await createNotification(eventId, notificationPayload);

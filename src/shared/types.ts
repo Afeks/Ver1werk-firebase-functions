@@ -82,3 +82,11 @@ export interface DistributeOrderResponse {
   error?: string;
 }
 
+export interface NotificationPayload {
+  title: string;
+  message: string;
+  pointOfService?: string;
+  price?: number;
+  itemId?: string;
+}
+

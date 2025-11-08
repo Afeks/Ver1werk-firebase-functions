@@ -1,6 +1,8 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { countOpenOrdersForStore } from '../../shared/database-helpers';
+import { createNotification } from '../../shared/notifications';
+import { NotificationPayload } from '../../shared/types';
 
 const COLLECTION_EVENTS = 'Events';
 const COLLECTION_POS = 'Points-of-Sale';
@@ -155,6 +157,13 @@ async function ensureTargetOrderDocument(
   await targetOrderRef.set(payload, { merge: true });
 }
 
+interface RefundInformation {
+  totalPrice: number;
+  pointOfService: string | null;
+  itemNames: string[];
+  orderIds: string[];
+}
+
 async function transferItemsForOrder(
   eventId: string,
   sourceOrderDoc: FirebaseFirestore.QueryDocumentSnapshot,
@@ -278,6 +287,82 @@ async function transferOpenOrdersForItem(
   return { ordersAffected, itemsMoved: totalMovedItems };
 }
 
+async function collectRefundInformation(
+  eventId: string,
+  sourcePosId: string,
+  itemId: string
+): Promise<RefundInformation> {
+  const db = admin.firestore();
+  const ordersSnapshot = await db
+    .collection(COLLECTION_EVENTS)
+    .doc(eventId)
+    .collection(COLLECTION_POS)
+    .doc(sourcePosId)
+    .collection(COLLECTION_ORDERS)
+    .where('orderStatus', '==', 'open')
+    .get();
+
+  if (ordersSnapshot.empty) {
+    return {
+      totalPrice: 0,
+      pointOfService: null,
+      itemNames: [],
+      orderIds: [],
+    };
+  }
+
+  let totalPrice = 0;
+  const itemNamesSet: Set<string> = new Set();
+  const orderIds: string[] = [];
+  let pointOfService: string | null = null;
+
+  for (const orderDoc of ordersSnapshot.docs) {
+    const orderData = orderDoc.data();
+    const orderItemsSnapshot = await orderDoc.ref
+      .collection(COLLECTION_ITEMS)
+      .where('id', '==', itemId)
+      .get();
+
+    if (orderItemsSnapshot.empty) {
+      continue;
+    }
+
+    pointOfService =
+      orderData.servingPointName ??
+      orderData.servingPointLocation ??
+      pointOfService;
+
+    let orderContainsItem = false;
+
+    for (const itemDoc of orderItemsSnapshot.docs) {
+      const itemData = itemDoc.data();
+      const count = extractCountFromItem(itemData);
+      if (count <= 0) {
+        continue;
+      }
+      const price = Number(itemData.price ?? 0);
+      if (Number.isFinite(price) && price > 0) {
+        totalPrice += price * count;
+      }
+      if (itemData.name) {
+        itemNamesSet.add(String(itemData.name));
+      }
+      orderContainsItem = true;
+    }
+
+    if (orderContainsItem) {
+      orderIds.push(orderDoc.id);
+    }
+  }
+
+  return {
+    totalPrice,
+    pointOfService,
+    itemNames: Array.from(itemNamesSet),
+    orderIds,
+  };
+}
+
 export const onPosItemAvailabilityChanged = functions
   .region('europe-west1')
   .firestore.document(
@@ -341,6 +426,39 @@ export const onPosItemAvailabilityChanged = functions
           itemId,
         }
       );
+
+      const refundInfo = await collectRefundInformation(
+        eventId,
+        posId,
+        itemId
+      );
+
+      if (refundInfo.totalPrice > 0) {
+        const title =
+          refundInfo.itemNames.length === 1
+            ? `Artikel ${refundInfo.itemNames[0]} ist ausverkauft`
+            : `Artikel (${refundInfo.itemNames.join(', ')}) sind ausverkauft`;
+
+        const notificationPayload: NotificationPayload = {
+          title,
+          message:
+            'Geld muss erstattet werden und Bestellung storniert werden.',
+          pointOfService: refundInfo.pointOfService || undefined,
+          price: refundInfo.totalPrice,
+          itemId: itemId,
+        };
+
+        await createNotification(eventId, notificationPayload);
+
+        functions.logger.info('Created sold-out notification', {
+          eventId,
+          itemId,
+          posId,
+          refundAmount: refundInfo.totalPrice,
+          orders: refundInfo.orderIds,
+        });
+      }
+
       return null;
     }
 

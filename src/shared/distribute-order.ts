@@ -124,9 +124,12 @@ async function distributeItems(
       
       // Finde Stores, die dieses Item verfügbar haben
       const availableStores = pointsOfSale.filter((store) => {
-        return store.availableItems.some(
-          (availableItem) => availableItem.id === item.id
-        );
+        return store.availableItems.some((availableItem) => {
+          return (
+            availableItem.id === item.id &&
+            availableItem.isAvailable !== false
+          );
+        });
       });
 
       console.log(`Item ${item.id} available in ${availableStores.length} stores`);

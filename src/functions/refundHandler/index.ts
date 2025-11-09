@@ -32,7 +32,7 @@ async function cancelItemsInOrderCollection(
       .where('id', 'in', chunk)
       .get();
 
-    const updates: Array<Promise<void>> = [];
+    const updates: Array<Promise<FirebaseFirestore.WriteResult>> = [];
 
     for (const itemDoc of itemsSnapshot.docs) {
       updates.push(

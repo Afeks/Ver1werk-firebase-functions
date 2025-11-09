@@ -9,6 +9,25 @@ const COLLECTION_POS = 'Points-of-Sale';
 const COLLECTION_ORDERS = 'Orders';
 const COLLECTION_ITEMS = 'Items';
 const globalAvailabilityCache: Map<string, boolean> = new Map();
+
+function getGlobalCacheKey(eventId: string, itemId: string): string {
+  return `${eventId}:${itemId}`;
+}
+
+function setGlobalAvailabilityCache(
+  eventId: string,
+  itemId: string,
+  value: boolean
+): void {
+  globalAvailabilityCache.set(getGlobalCacheKey(eventId, itemId), value);
+}
+
+function invalidateGlobalAvailabilityCache(
+  eventId: string,
+  itemId: string
+): void {
+  globalAvailabilityCache.delete(getGlobalCacheKey(eventId, itemId));
+}
 async function isItemGloballyAvailable(
   eventId: string,
   itemId: string,
@@ -18,7 +37,7 @@ async function isItemGloballyAvailable(
     return cache.get(itemId)!;
   }
 
-  const cacheKey = `${eventId}:${itemId}`;
+  const cacheKey = getGlobalCacheKey(eventId, itemId);
   if (!cache && globalAvailabilityCache.has(cacheKey)) {
     return globalAvailabilityCache.get(cacheKey)!;
   }
@@ -39,7 +58,7 @@ async function isItemGloballyAvailable(
   if (cache) {
     cache.set(itemId, available);
   } else {
-    globalAvailabilityCache.set(cacheKey, available);
+    setGlobalAvailabilityCache(eventId, itemId, available);
   }
 
   return available;
@@ -433,7 +452,7 @@ async function notifySoldOutOrders(
         itemIds.length === 1
           ? 'Artikel ist ausverkauft'
           : 'Artikel sind ausverkauft',
-      message: 'Betrag erstatten',
+      message: 'Unten stehenden Betrag erstatten und bestätigen',
       pointOfService: servingPoint || undefined,
       price: totalPrice,
       itemIds,
@@ -492,6 +511,7 @@ export const onPosItemAvailabilityChanged = functions
 
     if (afterAvailable) {
       await globalItemRef.set({ isAvailable: true }, { merge: true });
+      setGlobalAvailabilityCache(eventId, itemId, true);
       functions.logger.info('Item reactivated at POS and globally', {
         eventId,
         posId,
@@ -510,6 +530,7 @@ export const onPosItemAvailabilityChanged = functions
 
     if (candidateStores.length === 0) {
       await globalItemRef.set({ isAvailable: false }, { merge: true });
+      setGlobalAvailabilityCache(eventId, itemId, false);
       functions.logger.info(
         'No other POS offers the item. Global availability disabled.',
         {
@@ -526,6 +547,7 @@ export const onPosItemAvailabilityChanged = functions
 
     // Keep the global availability true if at least one other POS can sell the item
     await globalItemRef.set({ isAvailable: true }, { merge: true });
+    setGlobalAvailabilityCache(eventId, itemId, true);
 
     const targetStore = candidateStores[0];
 

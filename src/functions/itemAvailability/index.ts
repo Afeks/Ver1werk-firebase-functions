@@ -351,6 +351,48 @@ async function transferOpenOrdersForItem(
   return { ordersAffected, itemsMoved: totalMovedItems };
 }
 
+async function syncGlobalItemAvailability(
+  eventId: string,
+  itemId: string
+): Promise<boolean> {
+  const db = admin.firestore();
+  const posSnapshot = await db
+    .collection(COLLECTION_EVENTS)
+    .doc(eventId)
+    .collection(COLLECTION_POS)
+    .get();
+
+  let isAvailableSomewhere = false;
+
+  for (const posDoc of posSnapshot.docs) {
+    const itemDoc = await posDoc.ref
+      .collection(COLLECTION_ITEMS)
+      .doc(itemId)
+      .get();
+
+    if (!itemDoc.exists) {
+      continue;
+    }
+
+    const itemData = itemDoc.data();
+    if (itemData?.isAvailable !== false) {
+      isAvailableSomewhere = true;
+      break;
+    }
+  }
+
+  await db
+    .collection(COLLECTION_EVENTS)
+    .doc(eventId)
+    .collection(COLLECTION_ITEMS)
+    .doc(itemId)
+    .set({ isAvailable: isAvailableSomewhere }, { merge: true });
+
+  setGlobalAvailabilityCache(eventId, itemId, isAvailableSomewhere);
+
+  return isAvailableSomewhere;
+}
+
 async function notifySoldOutOrders(
   eventId: string,
   sourcePosId: string,
@@ -506,6 +548,7 @@ export const onPosItemAvailabilityChanged = functions
     if (afterAvailable) {
       await globalItemRef.set({ isAvailable: true }, { merge: true });
       setGlobalAvailabilityCache(eventId, itemId, true);
+      await syncGlobalItemAvailability(eventId, itemId);
       functions.logger.info('Item reactivated at POS and globally', {
         eventId,
         posId,
@@ -535,6 +578,7 @@ export const onPosItemAvailabilityChanged = functions
       );
 
       await notifySoldOutOrders(eventId, posId, itemId);
+      await syncGlobalItemAvailability(eventId, itemId);
 
       return null;
     }
@@ -561,6 +605,8 @@ export const onPosItemAvailabilityChanged = functions
       ordersAffected: transferResult.ordersAffected,
       itemsMoved: transferResult.itemsMoved,
     });
+
+    await syncGlobalItemAvailability(eventId, itemId);
 
     return null;
   });

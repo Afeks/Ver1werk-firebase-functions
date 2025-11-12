@@ -29,7 +29,7 @@ async function cancelItemsInOrderCollection(
   for (let i = 0; i < itemIds.length; i += chunkSize) {
     const chunk = itemIds.slice(i, i + chunkSize);
     const itemsSnapshot = await itemsCollection
-      .where('id', 'in', chunk)
+      .where('itemId', 'in', chunk)
       .get();
 
     const updates: Array<Promise<FirebaseFirestore.WriteResult>> = [];
@@ -37,7 +37,7 @@ async function cancelItemsInOrderCollection(
     for (const itemDoc of itemsSnapshot.docs) {
       updates.push(
         itemDoc.ref.set(
-          { status: 'canceled', count: 0, quantity: 0 },
+          { status: 'canceled', quantity: 0 },
           { merge: true }
         )
       );
@@ -59,9 +59,9 @@ async function recalculateOrderTotals(orderRef: FirebaseFirestore.DocumentRefere
       continue;
     }
     const price = Number(data.price ?? 0);
-    const count = Number(data.count ?? 0);
-    if (Number.isFinite(price) && Number.isFinite(count) && count > 0) {
-      totalPrice += price * count;
+    const quantity = Number(data.quantity ?? data.count ?? 0);
+    if (Number.isFinite(price) && Number.isFinite(quantity) && quantity > 0) {
+      totalPrice += price * quantity;
     }
   }
 

@@ -82,7 +82,7 @@ function extractCountFromItem(
   if (!data) {
     return 0;
   }
-  const raw = data.count ?? data.quantity ?? 0;
+  const raw = data.quantity ?? data.count ?? 0;
   const numeric = Number(raw);
   if (!Number.isFinite(numeric) || numeric <= 0) {
     return 0;
@@ -96,7 +96,8 @@ function sanitizeItemData(
 ): FirebaseFirestore.DocumentData {
   const sanitized = {
     ...source,
-    count: newCount,
+    itemId: source.itemId || source.id,
+    quantity: newCount,
     selectedExtras: Array.isArray(source.selectedExtras)
       ? source.selectedExtras
       : [],
@@ -105,7 +106,9 @@ function sanitizeItemData(
       : [],
   };
 
-  delete (sanitized as any).quantity;
+  delete (sanitized as any).count;
+  delete (sanitized as any).id;
+  delete (sanitized as any).categoryName;
   return sanitized;
 }
 
@@ -427,7 +430,7 @@ async function notifySoldOutOrders(
     const orderItems = itemsSnapshot.docs
       .map((itemDoc) => {
         const data = itemDoc.data();
-        const id = data?.id;
+        const id = data?.itemId || data?.id;
         if (!id) {
           return null;
         }
@@ -528,7 +531,7 @@ async function markItemsForCanceling(
   for (const orderDoc of ordersSnapshot.docs) {
     const itemsSnapshot = await orderDoc.ref
       .collection(COLLECTION_ITEMS)
-      .where('id', '==', itemId)
+      .where('itemId', '==', itemId)
       .get();
 
     for (const itemDoc of itemsSnapshot.docs) {

@@ -208,12 +208,11 @@ export async function createDistributedPurchaseForPointOfSale(
     const itemRef = itemsCollectionRef.doc(docId);
 
     batch.set(itemRef, {
-      id: item.id,
+      itemId: item.id,
       name: item.name || null,
       price: item.price || null,
-      count: count,
+      quantity: count,
       category: item.category || null,
-      categoryName: item.categoryName || null,
       selectedExtras: item.selectedExtras || [],
       excludedIngredients: item.excludedIngredients || [],
     });

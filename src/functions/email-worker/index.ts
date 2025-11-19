@@ -651,19 +651,39 @@ export const processEmailQueue = functions
   .pubsub.schedule('every 5 minutes')
   .timeZone('Europe/Berlin')
   .onRun(async () => {
-    const batch = await db
-      .collectionGroup(EMAIL_QUEUE_COLLECTION)
-      .where('status', 'in', ['pending', 'error'])
-      .orderBy('createdAt', 'asc')
-      .limit(20)
-      .get();
+    // Führe zwei separate Queries aus und kombiniere die Ergebnisse
+    // Das vermeidet Probleme mit Collection Group Queries und 'in' Operator
+    const [pendingBatch, errorBatch] = await Promise.all([
+      db
+        .collectionGroup(EMAIL_QUEUE_COLLECTION)
+        .where('status', '==', 'pending')
+        .orderBy('createdAt', 'asc')
+        .limit(10)
+        .get(),
+      db
+        .collectionGroup(EMAIL_QUEUE_COLLECTION)
+        .where('status', '==', 'error')
+        .orderBy('createdAt', 'asc')
+        .limit(10)
+        .get(),
+    ]);
 
-    if (batch.empty) {
+    // Kombiniere beide Batches und sortiere nach createdAt
+    const allDocs = [...pendingBatch.docs, ...errorBatch.docs].sort((a, b) => {
+      const aTime = a.data().createdAt?.toMillis() ?? 0;
+      const bTime = b.data().createdAt?.toMillis() ?? 0;
+      return aTime - bTime;
+    });
+
+    // Begrenze auf 20 Dokumente
+    const docsToProcess = allDocs.slice(0, 20);
+
+    if (docsToProcess.length === 0) {
       functions.logger.info('Keine offenen E-Mail-Aufträge gefunden.');
       return null;
     }
 
-    for (const doc of batch.docs) {
+    for (const doc of docsToProcess) {
       try {
         await handleEmailDocument(doc.ref);
       } catch (error) {

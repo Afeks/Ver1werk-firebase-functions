@@ -344,9 +344,7 @@ const buildTicketAttachments = async (
 
   const {
     orderId,
-    ticketId,
     ticketName,
-    customerName,
     seatList,
     eventDate,
     quantity,

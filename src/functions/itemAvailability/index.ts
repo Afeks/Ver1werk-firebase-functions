@@ -483,6 +483,7 @@ async function notifySoldOutOrders(
       continue;
     }
 
+    
     const itemIds = Array.from(
       new Set(soldOutEntries.map((entry) => entry.id))
     );

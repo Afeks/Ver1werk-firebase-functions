@@ -1,6 +1,8 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import nodemailer, { Transporter } from 'nodemailer';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import QRCode from 'qrcode';
 
 const EMAIL_QUEUE_COLLECTION = 'emailQueue';
 const ASSOCIATIONS_COLLECTION = 'associations';
@@ -8,14 +10,27 @@ const MAX_ATTEMPTS = 5;
 
 type EmailStatus = 'pending' | 'processing' | 'sent' | 'error' | 'failed';
 
+interface TicketContext {
+  orderId?: string;
+  ticketId?: string;
+  ticketName?: string;
+  customerName?: string;
+  seatList?: Array<{ id?: string; label?: string; number?: string }> | string;
+  eventDate?: string | Date;
+  quantity?: number;
+  associationName?: string;
+}
+
 interface EmailQueueDocument {
   associationId?: string;
+  type?: 'ticket' | 'test' | string;
   to?: string;
   subject?: string;
   body?: string;
   replyTo?: string;
   status?: EmailStatus;
   attempts?: number;
+  context?: TicketContext;
   createdAt?: FirebaseFirestore.Timestamp;
   lockedAt?: FirebaseFirestore.Timestamp;
   sentAt?: FirebaseFirestore.Timestamp;
@@ -38,6 +53,23 @@ interface AssociationDocument {
   emailSettings?: Partial<AssociationEmailSettings>;
 }
 
+interface TicketDesignSettings {
+  templateImageUrl?: string | null;
+  qrArea?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
+}
+
+interface QrArea {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface SendEmailParams {
   transporter: Transporter;
   fromName: string;
@@ -46,6 +78,7 @@ interface SendEmailParams {
   subject: string;
   body: string;
   replyTo?: string | null;
+  attachments?: Array<{ filename: string; content: Buffer }>;
 }
 
 const db = admin.firestore();
@@ -54,6 +87,319 @@ const FieldValue = admin.firestore.FieldValue;
 const getAssociationIdFromDocRef = (
   docRef: FirebaseFirestore.DocumentReference
 ): string | undefined => docRef.parent?.parent?.id;
+
+// Normalisiert QR-Bereich-Koordinaten (0-1 zu Pixel)
+const normalizeQrArea = (
+  qrArea: QrArea,
+  pageWidth: number,
+  pageHeight: number
+): QrArea => {
+  return {
+    x: (qrArea.x || 0) * pageWidth,
+    y: (qrArea.y || 0) * pageHeight,
+    width: (qrArea.width || 0.25) * pageWidth,
+    height: (qrArea.height || 0.25) * pageHeight,
+  };
+};
+
+// Formatiert Event-Datum für PDF-Text
+const formatEventDateText = (eventDate: string | Date | undefined): string => {
+  if (!eventDate) return '';
+  const date = eventDate instanceof Date ? eventDate : new Date(eventDate);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString('de-DE', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+// Sanitized Dateinamen-Segment
+const sanitizeFileSegment = (str: string | undefined): string => {
+  return String(str || '').replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 50);
+};
+
+// Lädt Ticket-Design-Einstellungen aus dem Ticketing-Modul
+const loadTicketDesignSettings = async (
+  associationId: string
+): Promise<TicketDesignSettings> => {
+  try {
+    const moduleDoc = await db
+      .collection(ASSOCIATIONS_COLLECTION)
+      .doc(associationId)
+      .collection('modules')
+      .doc('tickets')
+      .get();
+
+    if (!moduleDoc.exists) {
+      return { templateImageUrl: null, qrArea: null };
+    }
+
+    const data = moduleDoc.data();
+    return {
+      templateImageUrl: data?.ticketEmailTemplateImageUrl || null,
+      qrArea: data?.ticketEmailQrArea || null,
+    };
+  } catch (err) {
+    functions.logger.warn(
+      'Fehler beim Laden der Ticket-Design-Einstellungen:',
+      err
+    );
+    return { templateImageUrl: null, qrArea: null };
+  }
+};
+
+// Lädt Template-Bild von URL
+const downloadTemplateImage = async (
+  url: string
+): Promise<Buffer | null> => {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (err) {
+    functions.logger.warn('Fehler beim Laden des Template-Bildes:', err);
+    return null;
+  }
+};
+
+// Generiert QR-Code als PNG-Buffer
+const generateQRCodeBuffer = async (
+  data: string,
+  size = 200
+): Promise<Buffer> => {
+  try {
+    const qrBuffer = await QRCode.toBuffer(data, {
+      width: size,
+      margin: 1,
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF',
+      },
+    });
+    return Buffer.from(qrBuffer);
+  } catch (err) {
+    functions.logger.error('Fehler beim Generieren des QR-Codes:', err);
+    throw err;
+  }
+};
+
+// Generiert ein Ticket-PDF
+const generateTicketPdf = async ({
+  templateImageBuffer,
+  qrArea,
+  associationName,
+  ticketName,
+  eventDate,
+  seatLabel,
+  orderId,
+}: {
+  templateImageBuffer: Buffer | null;
+  qrArea: QrArea | null;
+  associationName: string;
+  ticketName: string;
+  eventDate?: string | Date;
+  seatLabel: string;
+  orderId?: string;
+}): Promise<Buffer> => {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([595, 842]); // A4 in Points
+  const pageWidth = page.getWidth();
+  const pageHeight = page.getHeight();
+
+  // Hintergrundbild einbetten (falls vorhanden)
+  if (templateImageBuffer) {
+    try {
+      let image;
+      const isJpeg =
+        templateImageBuffer[0] === 0xff && templateImageBuffer[1] === 0xd8;
+      if (isJpeg) {
+        image = await doc.embedJpg(templateImageBuffer);
+      } else {
+        image = await doc.embedPng(templateImageBuffer);
+      }
+      const imgDims = image.scale(1);
+      page.drawImage(image, {
+        x: 0,
+        y: pageHeight - imgDims.height,
+        width: imgDims.width,
+        height: imgDims.height,
+      });
+    } catch (err) {
+      functions.logger.warn('Fehler beim Einbetten des Template-Bildes:', err);
+    }
+  }
+
+  // QR-Code generieren und einfügen
+  const qrData = JSON.stringify({
+    orderId,
+    ticketName,
+    seatLabel,
+    eventDate: eventDate ? new Date(eventDate).toISOString() : null,
+  });
+  const qrBuffer = await generateQRCodeBuffer(qrData, 200);
+  const qrImage = await doc.embedPng(qrBuffer);
+
+  // QR-Bereich normalisieren
+  const normalizedQrArea = qrArea
+    ? normalizeQrArea(qrArea, pageWidth, pageHeight)
+    : {
+        x: pageWidth * 0.65,
+        y: pageHeight * 0.1,
+        width: pageWidth * 0.25,
+        height: pageHeight * 0.25,
+      };
+
+  // QR-Code im definierten Bereich platzieren
+  const qrSize = Math.min(normalizedQrArea.width, normalizedQrArea.height);
+  page.drawImage(qrImage, {
+    x: normalizedQrArea.x,
+    y: pageHeight - normalizedQrArea.y - qrSize,
+    width: qrSize,
+    height: qrSize,
+  });
+
+  // Text-Informationen hinzufügen
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const fontSize = 12;
+  const textColor = rgb(0, 0, 0);
+  let yPos = pageHeight - 50;
+
+  if (associationName) {
+    page.drawText(associationName, {
+      x: 50,
+      y: yPos,
+      size: fontSize + 4,
+      font,
+      color: textColor,
+    });
+    yPos -= 30;
+  }
+
+  if (ticketName) {
+    page.drawText(`Ticket: ${ticketName}`, {
+      x: 50,
+      y: yPos,
+      size: fontSize,
+      font,
+      color: textColor,
+    });
+    yPos -= 20;
+  }
+
+  if (eventDate) {
+    const dateText = formatEventDateText(eventDate);
+    if (dateText) {
+      page.drawText(`Datum: ${dateText}`, {
+        x: 50,
+        y: yPos,
+        size: fontSize,
+        font,
+        color: textColor,
+      });
+      yPos -= 20;
+    }
+  }
+
+  if (seatLabel) {
+    page.drawText(`Platz: ${seatLabel}`, {
+      x: 50,
+      y: yPos,
+      size: fontSize,
+      font,
+      color: textColor,
+    });
+    yPos -= 20;
+  }
+
+  if (orderId) {
+    page.drawText(`Bestellnummer: ${orderId}`, {
+      x: 50,
+      y: yPos,
+      size: fontSize - 2,
+      font,
+      color: textColor,
+    });
+  }
+
+  const pdfBytes = await doc.save();
+  return Buffer.from(pdfBytes);
+};
+
+// Erstellt PDF-Attachments für alle Tickets einer Bestellung
+const buildTicketAttachments = async (
+  associationId: string,
+  emailData: EmailQueueDocument
+): Promise<Array<{ filename: string; content: Buffer }>> => {
+  if (emailData.type !== 'ticket' || !emailData.context) {
+    return [];
+  }
+
+  const {
+    orderId,
+    ticketId,
+    ticketName,
+    customerName,
+    seatList,
+    eventDate,
+    quantity,
+    associationName,
+  } = emailData.context;
+
+  if (!orderId || !ticketName) {
+    return [];
+  }
+
+  // Lade Design-Einstellungen
+  const designSettings = await loadTicketDesignSettings(associationId);
+  const templateImageBuffer = designSettings.templateImageUrl
+    ? await downloadTemplateImage(designSettings.templateImageUrl)
+    : null;
+
+  const attachments: Array<{ filename: string; content: Buffer }> = [];
+  const seatArray = Array.isArray(seatList) ? seatList : [];
+
+  // Wenn mehrere Tickets, erstelle für jedes ein PDF
+  const ticketCount = quantity || seatArray.length || 1;
+  for (let i = 0; i < ticketCount; i++) {
+    const seat = seatArray[i];
+    const seatLabel =
+      seat?.label || seat?.number || seat?.id || `Ticket ${i + 1}`;
+
+    try {
+      const pdfBuffer = await generateTicketPdf({
+        templateImageBuffer,
+        qrArea: designSettings.qrArea || null,
+        associationName: associationName || 'Verein',
+        ticketName,
+        eventDate,
+        seatLabel,
+        orderId,
+      });
+
+      const fileName = `Ticket_${sanitizeFileSegment(ticketName)}_${sanitizeFileSegment(seatLabel)}.pdf`;
+      attachments.push({
+        filename: fileName,
+        content: pdfBuffer,
+      });
+    } catch (err) {
+      functions.logger.error(
+        `Fehler beim Generieren des PDFs für Ticket ${i + 1}:`,
+        err
+      );
+      // Weiter mit nächstem Ticket, auch wenn eines fehlschlägt
+    }
+  }
+
+  return attachments;
+};
 
 const loadAssociationEmailSettings = async (
   associationId?: string
@@ -131,6 +477,7 @@ const sendEmail = async ({
   subject,
   body,
   replyTo,
+  attachments,
 }: SendEmailParams): Promise<void> => {
   const trimmedBody = body.trim();
   const mailOptions: nodemailer.SendMailOptions = {
@@ -147,6 +494,10 @@ const sendEmail = async ({
 
   if (replyTo) {
     mailOptions.replyTo = replyTo;
+  }
+
+  if (attachments && attachments.length > 0) {
+    mailOptions.attachments = attachments;
   }
 
   await transporter.sendMail(mailOptions);
@@ -230,6 +581,23 @@ const handleEmailDocument = async (
       throw new Error('E-Mail-Daten unvollständig (to/subject/body).');
     }
 
+    // Generiere Attachments für Ticket-E-Mails
+    let attachments: Array<{ filename: string; content: Buffer }> = [];
+    if (emailData.type === 'ticket' && associationId) {
+      try {
+        attachments = await buildTicketAttachments(associationId, emailData);
+        functions.logger.info(
+          `Generierte ${attachments.length} PDF-Attachments für Ticket-E-Mail`
+        );
+      } catch (attachErr) {
+        functions.logger.error(
+          'Fehler beim Generieren der PDF-Attachments:',
+          attachErr
+        );
+        // Weiter mit E-Mail-Versand, auch wenn Attachments fehlschlagen
+      }
+    }
+
     await sendEmail({
       transporter,
       fromName: associationConfig.senderName,
@@ -238,6 +606,7 @@ const handleEmailDocument = async (
       subject,
       body,
       replyTo: emailData.replyTo ?? associationConfig.replyTo,
+      attachments,
     });
 
     await docRef.update({
@@ -251,6 +620,7 @@ const handleEmailDocument = async (
     functions.logger.info('E-Mail erfolgreich versendet', {
       docId: docRef.id,
       to,
+      attachmentsCount: attachments.length,
     });
   } catch (error) {
     functions.logger.error('Fehler beim E-Mail-Versand', {
@@ -308,5 +678,3 @@ export const processEmailQueue = functions
 
     return null;
   });
-
-

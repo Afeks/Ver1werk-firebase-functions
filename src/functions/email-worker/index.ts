@@ -19,6 +19,8 @@ interface TicketContext {
   eventDate?: string | Date;
   quantity?: number;
   associationName?: string;
+  ticketTemplatePdfUrl?: string;
+  ticketTemplateQrArea?: QrArea | null;
 }
 
 interface EmailQueueDocument {
@@ -54,13 +56,9 @@ interface AssociationDocument {
 }
 
 interface TicketDesignSettings {
+  templatePdfUrl?: string | null;
   templateImageUrl?: string | null;
-  qrArea?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null;
+  qrArea?: QrArea | null;
 }
 
 interface QrArea {
@@ -69,6 +67,13 @@ interface QrArea {
   width: number;
   height: number;
 }
+
+const DEFAULT_QR_AREA: QrArea = {
+  x: 0.65,
+  y: 0.1,
+  width: 0.25,
+  height: 0.25,
+};
 
 interface SendEmailParams {
   transporter: Transporter;
@@ -167,11 +172,12 @@ const loadTicketDesignSettings = async (
       .get();
 
     if (!moduleDoc.exists) {
-      return { templateImageUrl: null, qrArea: null };
+      return { templatePdfUrl: null, templateImageUrl: null, qrArea: null };
     }
 
     const data = moduleDoc.data();
     return {
+      templatePdfUrl: data?.ticketEmailTemplatePdfUrl || null,
       templateImageUrl: data?.ticketEmailTemplateImageUrl || null,
       qrArea: data?.ticketEmailQrArea || null,
     };
@@ -180,14 +186,19 @@ const loadTicketDesignSettings = async (
       'Fehler beim Laden der Ticket-Design-Einstellungen:',
       err
     );
-    return { templateImageUrl: null, qrArea: null };
+    return { templatePdfUrl: null, templateImageUrl: null, qrArea: null };
   }
 };
 
-// Lädt Template-Bild von URL
-const downloadTemplateImage = async (
+interface TemplateAsset {
+  buffer: Buffer;
+  type: 'pdf' | 'png' | 'jpg';
+}
+
+// Lädt Template-Datei von URL (PDF oder Bild)
+const downloadTemplateAsset = async (
   url: string
-): Promise<Buffer | null> => {
+): Promise<TemplateAsset | null> => {
   if (!url) return null;
   try {
     const response = await fetch(url);
@@ -195,9 +206,22 @@ const downloadTemplateImage = async (
       throw new Error(`HTTP ${response.status}`);
     }
     const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    const buffer = Buffer.from(arrayBuffer);
+    const contentType = response.headers.get('content-type')?.toLowerCase() || '';
+    const normalizedUrl = url.toLowerCase();
+
+    let type: TemplateAsset['type'] = 'jpg';
+    if (contentType.includes('pdf') || normalizedUrl.endsWith('.pdf')) {
+      type = 'pdf';
+    } else if (contentType.includes('png') || normalizedUrl.endsWith('.png')) {
+      type = 'png';
+    } else if (contentType.includes('jpg') || contentType.includes('jpeg') || normalizedUrl.endsWith('.jpg') || normalizedUrl.endsWith('.jpeg')) {
+      type = 'jpg';
+    }
+
+    return { buffer, type };
   } catch (err) {
-    functions.logger.warn('Fehler beim Laden des Template-Bildes:', err);
+    functions.logger.warn('Fehler beim Laden der Ticket-Vorlage:', err);
     return null;
   }
 };
@@ -225,7 +249,7 @@ const generateQRCodeBuffer = async (
 
 // Generiert ein Ticket-PDF
 const generateTicketPdf = async ({
-  templateImageBuffer,
+  templateAsset,
   qrArea,
   associationName,
   ticketName,
@@ -233,7 +257,7 @@ const generateTicketPdf = async ({
   seatLabel,
   orderId,
 }: {
-  templateImageBuffer: Buffer | null;
+  templateAsset: TemplateAsset | null;
   qrArea: QrArea | null;
   associationName: string;
   ticketName: string;
@@ -242,31 +266,46 @@ const generateTicketPdf = async ({
   orderId?: string;
 }): Promise<Buffer> => {
   const doc = await PDFDocument.create();
-  const page = doc.addPage([595, 842]); // A4 in Points
-  const pageWidth = page.getWidth();
-  const pageHeight = page.getHeight();
+  let pageWidth = 595;
+  let pageHeight = 842;
+  let page;
 
-  // Hintergrundbild einbetten (falls vorhanden)
-  if (templateImageBuffer) {
+  if (templateAsset?.type === 'pdf') {
     try {
-      let image;
-      const isJpeg =
-        templateImageBuffer[0] === 0xff && templateImageBuffer[1] === 0xd8;
-      if (isJpeg) {
-        image = await doc.embedJpg(templateImageBuffer);
-      } else {
-        image = await doc.embedPng(templateImageBuffer);
-      }
-      const imgDims = image.scale(1);
+      const templateDoc = await PDFDocument.load(templateAsset.buffer);
+      const [copiedPage] = await doc.copyPages(templateDoc, [0]);
+      page = copiedPage;
+      doc.addPage(page);
+      pageWidth = page.getWidth();
+      pageHeight = page.getHeight();
+    } catch (err) {
+      functions.logger.warn('Fehler beim Einbetten der PDF-Vorlage:', err);
+      page = doc.addPage([pageWidth, pageHeight]);
+    }
+  } else if (
+    templateAsset?.type === 'png' ||
+    templateAsset?.type === 'jpg'
+  ) {
+    try {
+      const image =
+        templateAsset.type === 'png'
+          ? await doc.embedPng(templateAsset.buffer)
+          : await doc.embedJpg(templateAsset.buffer);
+      pageWidth = image.width;
+      pageHeight = image.height;
+      page = doc.addPage([pageWidth, pageHeight]);
       page.drawImage(image, {
         x: 0,
-        y: pageHeight - imgDims.height,
-        width: imgDims.width,
-        height: imgDims.height,
+        y: 0,
+        width: pageWidth,
+        height: pageHeight,
       });
     } catch (err) {
-      functions.logger.warn('Fehler beim Einbetten des Template-Bildes:', err);
+      functions.logger.warn('Fehler beim Einbetten der Bild-Vorlage:', err);
+      page = doc.addPage([pageWidth, pageHeight]);
     }
+  } else {
+    page = doc.addPage([pageWidth, pageHeight]);
   }
 
   // QR-Code generieren und einfügen
@@ -286,14 +325,11 @@ const generateTicketPdf = async ({
   const qrImage = await doc.embedPng(qrBuffer);
 
   // QR-Bereich normalisieren
-  const normalizedQrArea = qrArea
-    ? normalizeQrArea(qrArea, pageWidth, pageHeight)
-    : {
-        x: pageWidth * 0.65,
-        y: pageHeight * 0.1,
-        width: pageWidth * 0.25,
-        height: pageHeight * 0.25,
-      };
+  const normalizedQrArea = normalizeQrArea(
+    qrArea || DEFAULT_QR_AREA,
+    pageWidth,
+    pageHeight
+  );
 
   // QR-Code im definierten Bereich platzieren
   const qrSize = Math.min(normalizedQrArea.width, normalizedQrArea.height);
@@ -397,6 +433,8 @@ const buildTicketAttachments = async (
     eventDate,
     quantity,
     associationName,
+    ticketTemplatePdfUrl,
+    ticketTemplateQrArea,
   } = emailData.context;
 
   functions.logger.info('buildTicketAttachments: Context-Daten', {
@@ -417,10 +455,25 @@ const buildTicketAttachments = async (
     return [];
   }
 
-  // Lade Design-Einstellungen
-  const designSettings = await loadTicketDesignSettings(associationId);
-  const templateImageBuffer = designSettings.templateImageUrl
-    ? await downloadTemplateImage(designSettings.templateImageUrl)
+  let qrArea = ticketTemplateQrArea || null;
+  let templateUrl = ticketTemplatePdfUrl || null;
+  let designSettings: TicketDesignSettings | null = null;
+
+  if (!templateUrl || !qrArea) {
+    designSettings = await loadTicketDesignSettings(associationId);
+    if (!templateUrl) {
+      templateUrl =
+        designSettings.templatePdfUrl ||
+        designSettings.templateImageUrl ||
+        null;
+    }
+    if (!qrArea) {
+      qrArea = designSettings.qrArea || null;
+    }
+  }
+
+  const templateAsset = templateUrl
+    ? await downloadTemplateAsset(templateUrl)
     : null;
 
   const attachments: Array<{ filename: string; content: Buffer }> = [];
@@ -433,8 +486,8 @@ const buildTicketAttachments = async (
     ticketCount,
     quantity,
     seatArrayLength: seatArray.length,
-    hasTemplateImage: !!templateImageBuffer,
-    hasQrArea: !!designSettings.qrArea,
+    templateType: templateAsset?.type || 'none',
+    hasQrArea: !!qrArea,
   });
 
   for (let i = 0; i < ticketCount; i++) {
@@ -449,8 +502,8 @@ const buildTicketAttachments = async (
 
     try {
       const pdfBuffer = await generateTicketPdf({
-        templateImageBuffer,
-        qrArea: designSettings.qrArea || null,
+        templateAsset,
+        qrArea,
         associationName: associationName || 'Verein',
         ticketName,
         eventDate,

@@ -731,6 +731,10 @@ const handleEmailDocument = async (
 };
 
 export const onEmailQueued = functions
+  .runWith({
+    memory: '512MB',
+    timeoutSeconds: 120,
+  })
   .region('europe-west1')
   .firestore.document(
     `${ASSOCIATIONS_COLLECTION}/{associationId}/${EMAIL_QUEUE_COLLECTION}/{emailId}`
@@ -748,6 +752,10 @@ export const onEmailQueued = functions
   });
 
 export const processEmailQueue = functions
+  .runWith({
+    memory: '512MB',
+    timeoutSeconds: 120,
+  })
   .region('europe-west1')
   .pubsub.schedule('every 5 minutes')
   .timeZone('Europe/Berlin')

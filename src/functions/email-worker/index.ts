@@ -338,7 +338,17 @@ const buildTicketAttachments = async (
   associationId: string,
   emailData: EmailQueueDocument
 ): Promise<Array<{ filename: string; content: Buffer }>> => {
+  functions.logger.info('buildTicketAttachments aufgerufen', {
+    type: emailData.type,
+    hasContext: !!emailData.context,
+    contextKeys: emailData.context ? Object.keys(emailData.context) : [],
+  });
+
   if (emailData.type !== 'ticket' || !emailData.context) {
+    functions.logger.warn('buildTicketAttachments: Bedingung nicht erfüllt', {
+      type: emailData.type,
+      hasContext: !!emailData.context,
+    });
     return [];
   }
 
@@ -351,7 +361,21 @@ const buildTicketAttachments = async (
     associationName,
   } = emailData.context;
 
+  functions.logger.info('buildTicketAttachments: Context-Daten', {
+    orderId,
+    ticketName,
+    seatListType: Array.isArray(seatList) ? 'array' : typeof seatList,
+    seatListLength: Array.isArray(seatList) ? seatList.length : 0,
+    eventDate,
+    quantity,
+    associationName,
+  });
+
   if (!orderId || !ticketName) {
+    functions.logger.warn('buildTicketAttachments: orderId oder ticketName fehlt', {
+      orderId,
+      ticketName,
+    });
     return [];
   }
 
@@ -366,10 +390,24 @@ const buildTicketAttachments = async (
 
   // Wenn mehrere Tickets, erstelle für jedes ein PDF
   const ticketCount = quantity || seatArray.length || 1;
+  
+  functions.logger.info('buildTicketAttachments: Starte PDF-Generierung', {
+    ticketCount,
+    quantity,
+    seatArrayLength: seatArray.length,
+    hasTemplateImage: !!templateImageBuffer,
+    hasQrArea: !!designSettings.qrArea,
+  });
+
   for (let i = 0; i < ticketCount; i++) {
     const seat = seatArray[i];
     const seatLabel =
       seat?.label || seat?.number || seat?.id || `Ticket ${i + 1}`;
+
+    functions.logger.info(`Generiere PDF für Ticket ${i + 1}`, {
+      seatLabel,
+      seat,
+    });
 
     try {
       const pdfBuffer = await generateTicketPdf({
@@ -387,14 +425,28 @@ const buildTicketAttachments = async (
         filename: fileName,
         content: pdfBuffer,
       });
+      
+      functions.logger.info(`PDF erfolgreich generiert für Ticket ${i + 1}`, {
+        fileName,
+        pdfSize: pdfBuffer.length,
+      });
     } catch (err) {
       functions.logger.error(
         `Fehler beim Generieren des PDFs für Ticket ${i + 1}:`,
-        err
+        {
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+          seatLabel,
+        }
       );
       // Weiter mit nächstem Ticket, auch wenn eines fehlschlägt
     }
   }
+
+  functions.logger.info('buildTicketAttachments: Fertig', {
+    attachmentsGenerated: attachments.length,
+    expectedCount: ticketCount,
+  });
 
   return attachments;
 };
@@ -494,11 +546,31 @@ const sendEmail = async ({
     mailOptions.replyTo = replyTo;
   }
 
+  functions.logger.info('sendEmail: Attachments-Status', {
+    attachmentsCount: attachments?.length ?? 0,
+    attachmentFilenames: attachments?.map((a) => a.filename) ?? [],
+    attachmentSizes: attachments?.map((a) => a.content.length) ?? [],
+  });
+
   if (attachments && attachments.length > 0) {
-    mailOptions.attachments = attachments;
+    mailOptions.attachments = attachments.map((att) => ({
+      filename: att.filename,
+      content: att.content,
+    }));
+    functions.logger.info('Attachments zu mailOptions hinzugefügt', {
+      count: mailOptions.attachments.length,
+    });
+  } else {
+    functions.logger.warn('Keine Attachments vorhanden');
   }
 
   await transporter.sendMail(mailOptions);
+  
+  functions.logger.info('E-Mail erfolgreich versendet via sendEmail', {
+    to,
+    subject,
+    attachmentsCount: attachments?.length ?? 0,
+  });
 };
 
 const markAsFailed = async (
@@ -581,19 +653,48 @@ const handleEmailDocument = async (
 
     // Generiere Attachments für Ticket-E-Mails
     let attachments: Array<{ filename: string; content: Buffer }> = [];
+    
+    functions.logger.info('Prüfe Attachments-Generierung', {
+      docId: docRef.id,
+      type: emailData.type,
+      hasContext: !!emailData.context,
+      associationId,
+    });
+
     if (emailData.type === 'ticket' && associationId) {
       try {
+        functions.logger.info('Starte Attachment-Generierung', {
+          docId: docRef.id,
+          context: emailData.context,
+        });
+        
         attachments = await buildTicketAttachments(associationId, emailData);
+        
         functions.logger.info(
-          `Generierte ${attachments.length} PDF-Attachments für Ticket-E-Mail`
+          `Generierte ${attachments.length} PDF-Attachments für Ticket-E-Mail`,
+          {
+            docId: docRef.id,
+            attachmentFilenames: attachments.map((a) => a.filename),
+          }
         );
       } catch (attachErr) {
         functions.logger.error(
           'Fehler beim Generieren der PDF-Attachments:',
-          attachErr
+          {
+            docId: docRef.id,
+            error: attachErr instanceof Error ? attachErr.message : String(attachErr),
+            stack: attachErr instanceof Error ? attachErr.stack : undefined,
+          }
         );
         // Weiter mit E-Mail-Versand, auch wenn Attachments fehlschlagen
       }
+    } else {
+      functions.logger.info('Keine Attachments generiert', {
+        docId: docRef.id,
+        reason: emailData.type !== 'ticket' ? 'type ist nicht "ticket"' : 'associationId fehlt',
+        type: emailData.type,
+        associationId,
+      });
     }
 
     await sendEmail({

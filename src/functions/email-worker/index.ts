@@ -102,11 +102,43 @@ const normalizeQrArea = (
   };
 };
 
+const toValidDate = (
+  value: string | Date | FirebaseFirestore.Timestamp | undefined
+): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (
+    typeof value === 'object' &&
+    'toDate' in value &&
+    typeof (value as FirebaseFirestore.Timestamp).toDate === 'function'
+  ) {
+    const date = (value as FirebaseFirestore.Timestamp).toDate();
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  if (typeof value === 'string') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  return null;
+};
+
 // Formatiert Event-Datum für PDF-Text
-const formatEventDateText = (eventDate: string | Date | undefined): string => {
-  if (!eventDate) return '';
-  const date = eventDate instanceof Date ? eventDate : new Date(eventDate);
-  if (isNaN(date.getTime())) return '';
+const formatEventDateText = (
+  eventDate: string | Date | FirebaseFirestore.Timestamp | undefined
+): string => {
+  const date = toValidDate(eventDate);
+  if (!date) {
+    return typeof eventDate === 'string' ? eventDate : '';
+  }
+
   return date.toLocaleString('de-DE', {
     weekday: 'long',
     year: 'numeric',
@@ -205,7 +237,7 @@ const generateTicketPdf = async ({
   qrArea: QrArea | null;
   associationName: string;
   ticketName: string;
-  eventDate?: string | Date;
+  eventDate?: string | Date | FirebaseFirestore.Timestamp;
   seatLabel: string;
   orderId?: string;
 }): Promise<Buffer> => {
@@ -238,11 +270,17 @@ const generateTicketPdf = async ({
   }
 
   // QR-Code generieren und einfügen
+  const normalizedEventDate = toValidDate(eventDate);
+
   const qrData = JSON.stringify({
     orderId,
     ticketName,
     seatLabel,
-    eventDate: eventDate ? new Date(eventDate).toISOString() : null,
+    eventDate: normalizedEventDate
+      ? normalizedEventDate.toISOString()
+      : typeof eventDate === 'string'
+        ? eventDate
+        : null,
   });
   const qrBuffer = await generateQRCodeBuffer(qrData, 200);
   const qrImage = await doc.embedPng(qrBuffer);

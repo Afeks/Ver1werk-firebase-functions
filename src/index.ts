@@ -21,3 +21,4 @@ export {
   onEmailQueued,
   processEmailQueue,
 } from './functions/email-worker';
+export { analyzeReceipt } from './functions/analyzeReceipt';

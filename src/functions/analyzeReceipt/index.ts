@@ -6,6 +6,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
+import { PDFDocument } from 'pdf-lib';
 
 // Vision API Client initialisieren
 const visionClient = new ImageAnnotatorClient();
@@ -147,6 +148,22 @@ export const analyzeReceipt = functions
                 const base64Content = fileBuffer.toString('base64');
                 console.log('📥 Datei geladen, Größe:', fileBuffer.length, 'bytes');
                 
+                // Prüfe, ob die PDF gültig ist
+                try {
+                  const pdfDoc = await PDFDocument.load(fileBuffer);
+                  const pageCount = pdfDoc.getPageCount();
+                  console.log('✅ PDF ist gültig, Seitenanzahl:', pageCount);
+                  
+                  // Prüfe, ob die PDF verschlüsselt ist
+                  const isEncrypted = (pdfDoc as any).isEncrypted;
+                  if (isEncrypted) {
+                    console.log('⚠️ PDF ist verschlüsselt - Vision API kann sie nicht verarbeiten');
+                  }
+                } catch (pdfError: any) {
+                  console.log('⚠️ PDF-Validierung fehlgeschlagen:', pdfError.message);
+                  console.log('⚠️ Möglicherweise ist die PDF beschädigt oder hat ein ununterstütztes Format');
+                }
+                
                 const [result] = await visionClient.documentTextDetection({
                   image: {
                     content: base64Content
@@ -269,6 +286,15 @@ export const analyzeReceipt = functions
       }
 
       if (!fullText || fullText.trim().length === 0) {
+        // Prüfe, ob alle Methoden "Bad image data" zurückgegeben haben
+        const errorMessage = isPDF 
+          ? 'Die PDF-Datei konnte nicht von der Vision API verarbeitet werden. Mögliche Ursachen:\n' +
+            '- Die PDF ist verschlüsselt oder passwortgeschützt\n' +
+            '- Die PDF ist beschädigt oder hat ein ununterstütztes Format\n' +
+            '- Die PDF ist ein gescanntes Bild mit sehr schlechter Qualität\n\n' +
+            'Bitte versuchen Sie, die PDF in ein Bildformat (PNG/JPEG) zu konvertieren und erneut hochzuladen.'
+          : 'Kein Text in der Rechnung gefunden. Bitte stellen Sie sicher, dass das Bild klar und gut lesbar ist.';
+        
         res.status(200).json({
           text: '',
           extracted: {
@@ -280,7 +306,7 @@ export const analyzeReceipt = functions
             vat: null
           },
           confidence: 0,
-          message: 'Kein Text in der Rechnung gefunden'
+          message: errorMessage
         });
         return;
       }

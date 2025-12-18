@@ -153,6 +153,11 @@ export const analyzeReceipt = functions
                   }
                 });
                 
+                console.log('📊 Base64 Vision API Response erhalten');
+                console.log('📊 result.fullTextAnnotation:', result.fullTextAnnotation ? 'vorhanden' : 'null/undefined');
+                console.log('📊 result.error:', result.error ? JSON.stringify(result.error) : 'kein Fehler');
+                console.log('📊 result.textAnnotations:', result.textAnnotations ? `${result.textAnnotations.length} Annotations` : 'null/undefined');
+                
                 if (result.fullTextAnnotation) {
                   fullText = result.fullTextAnnotation.text || '';
                   confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
@@ -161,7 +166,33 @@ export const analyzeReceipt = functions
                     console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
                   }
                 } else {
-                  throw new Error('No fullTextAnnotation in Base64 result');
+                  // Versuche textDetection für gescannte Bild-PDFs
+                  console.log('🔄 Versuche textDetection für gescannte Bild-PDFs');
+                  try {
+                    const [textResult] = await visionClient.textDetection({
+                      image: {
+                        content: base64Content
+                      }
+                    });
+                    
+                    console.log('📊 textDetection Response erhalten');
+                    console.log('📊 textResult.textAnnotations:', textResult.textAnnotations ? `${textResult.textAnnotations.length} Annotations` : 'null/undefined');
+                    console.log('📊 textResult.error:', textResult.error ? JSON.stringify(textResult.error) : 'kein Fehler');
+                    
+                    if (textResult.textAnnotations && textResult.textAnnotations.length > 0) {
+                      fullText = textResult.textAnnotations[0].description || '';
+                      confidence = textResult.textAnnotations[0].score || 0;
+                      console.log('✅ Text mit textDetection (Base64) extrahiert, Länge:', fullText.length);
+                      if (fullText.length > 0) {
+                        console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
+                      }
+                    } else {
+                      throw new Error('No fullTextAnnotation in Base64 result and no textAnnotations in textDetection');
+                    }
+                  } catch (textDetError: any) {
+                    console.log('⚠️ textDetection (Base64) fehlgeschlagen:', textDetError.message);
+                    throw new Error('No fullTextAnnotation in Base64 result');
+                  }
                 }
               } else {
                 throw new Error('File not found in storage');
@@ -181,6 +212,10 @@ export const analyzeReceipt = functions
                 }
               });
               
+              console.log('📊 URL Vision API Response erhalten');
+              console.log('📊 result.fullTextAnnotation:', result.fullTextAnnotation ? 'vorhanden' : 'null/undefined');
+              console.log('📊 result.error:', result.error ? JSON.stringify(result.error) : 'kein Fehler');
+              
               if (result.fullTextAnnotation) {
                 fullText = result.fullTextAnnotation.text || '';
                 confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
@@ -190,21 +225,30 @@ export const analyzeReceipt = functions
               }
             } catch (urlError: any) {
               console.log('⚠️ Original URL Methode fehlgeschlagen:', urlError.message);
+              console.log('⚠️ URL Error Details:', JSON.stringify(urlError));
               
               // Methode 4: Fallback mit textDetection
               try {
-                console.log('🔄 Versuche Fallback mit textDetection');
+                console.log('🔄 Versuche Fallback mit textDetection (URL)');
                 const [result] = await visionClient.textDetection(receiptUrl);
+                console.log('📊 textDetection (URL) Response erhalten');
+                console.log('📊 result.textAnnotations:', result.textAnnotations ? `${result.textAnnotations.length} Annotations` : 'null/undefined');
+                console.log('📊 result.error:', result.error ? JSON.stringify(result.error) : 'kein Fehler');
+                
                 const detections = result.textAnnotations;
                 if (detections && detections.length > 0) {
                   fullText = detections[0].description || '';
                   confidence = detections[0].score || 0;
-                  console.log('✅ Text mit textDetection gefunden');
+                  console.log('✅ Text mit textDetection (URL) gefunden, Länge:', fullText.length);
+                  if (fullText.length > 0) {
+                    console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
+                  }
                 } else {
-                  console.log('⚠️ textDetection hat keine Ergebnisse zurückgegeben');
+                  console.log('⚠️ textDetection (URL) hat keine Ergebnisse zurückgegeben');
                 }
               } catch (fallbackError: any) {
                 console.error('❌ Alle Methoden fehlgeschlagen:', fallbackError.message);
+                console.error('❌ Fallback Error Details:', JSON.stringify(fallbackError));
               }
             }
           }

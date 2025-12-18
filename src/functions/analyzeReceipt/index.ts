@@ -473,11 +473,10 @@ async function convertPdfToImage(pdfBuffer: Buffer): Promise<Buffer> {
     await page.waitForTimeout(2000);
     
     // Erstelle Screenshot
-    const screenshot = await page.screenshot({
+    const screenshot = (await page.screenshot({
       type: 'png',
-      fullPage: true,
-      encoding: 'binary' as any
-    }) as Buffer;
+      fullPage: true
+    })) as Buffer;
     
     await browser.close();
     

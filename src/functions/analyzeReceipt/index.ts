@@ -104,51 +104,108 @@ export const analyzeReceipt = functions
         
         // Methode 1: Versuche documentTextDetection mit GCS URI
         try {
-          console.log('🔄 Versuche documentTextDetection mit GCS URI');
+          console.log('🔄 Versuche documentTextDetection mit GCS URI:', gcsUri);
           const [result] = await visionClient.documentTextDetection({
             image: {
               source: { imageUri: gcsUri }
             }
           });
           
+          console.log('📊 Vision API Response erhalten');
+          console.log('📊 result.fullTextAnnotation:', result.fullTextAnnotation ? 'vorhanden' : 'null/undefined');
+          console.log('📊 result.error:', result.error ? JSON.stringify(result.error) : 'kein Fehler');
+          
           if (result.fullTextAnnotation) {
             fullText = result.fullTextAnnotation.text || '';
             confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
             console.log('✅ PDF-Text mit documentTextDetection extrahiert, Länge:', fullText.length);
-            console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
+            if (fullText.length > 0) {
+              console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
+            } else {
+              console.log('⚠️ fullTextAnnotation.text ist leer');
+            }
+          } else {
+            console.log('⚠️ result.fullTextAnnotation ist null/undefined, versuche nächste Methode');
+            throw new Error('No fullTextAnnotation in result');
           }
         } catch (gcsError: any) {
           console.log('⚠️ GCS URI Methode fehlgeschlagen:', gcsError.message);
+          console.log('⚠️ Error Details:', JSON.stringify(gcsError));
           
-          // Methode 2: Versuche documentTextDetection mit original URL
+          // Methode 2: Lade Datei aus Firebase Storage und sende als Base64
           try {
-            console.log('🔄 Versuche documentTextDetection mit original URL');
-            const [result] = await visionClient.documentTextDetection({
-              image: {
-                source: { imageUri: receiptUrl }
+            console.log('🔄 Versuche Datei aus Storage zu laden und als Base64 zu senden');
+            const urlMatch = receiptUrl.match(/\/o\/([^?]+)/);
+            if (urlMatch) {
+              const filePath = decodeURIComponent(urlMatch[1]);
+              const file = bucket.file(filePath);
+              const [exists] = await file.exists();
+              
+              if (exists) {
+                console.log('📥 Datei gefunden, lade herunter...');
+                const [fileBuffer] = await file.download();
+                const base64Content = fileBuffer.toString('base64');
+                console.log('📥 Datei geladen, Größe:', fileBuffer.length, 'bytes');
+                
+                const [result] = await visionClient.documentTextDetection({
+                  image: {
+                    content: base64Content
+                  }
+                });
+                
+                if (result.fullTextAnnotation) {
+                  fullText = result.fullTextAnnotation.text || '';
+                  confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
+                  console.log('✅ PDF-Text mit Base64-Methode extrahiert, Länge:', fullText.length);
+                  if (fullText.length > 0) {
+                    console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
+                  }
+                } else {
+                  throw new Error('No fullTextAnnotation in Base64 result');
+                }
+              } else {
+                throw new Error('File not found in storage');
               }
-            });
-            
-            if (result.fullTextAnnotation) {
-              fullText = result.fullTextAnnotation.text || '';
-              confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
-              console.log('✅ PDF-Text mit original URL extrahiert');
+            } else {
+              throw new Error('Could not extract file path from URL');
             }
-          } catch (urlError: any) {
-            console.log('⚠️ Original URL Methode fehlgeschlagen:', urlError.message);
+          } catch (base64Error: any) {
+            console.log('⚠️ Base64 Methode fehlgeschlagen:', base64Error.message);
             
-            // Methode 3: Fallback mit textDetection
+            // Methode 3: Versuche documentTextDetection mit original URL
             try {
-              console.log('🔄 Versuche Fallback mit textDetection');
-              const [result] = await visionClient.textDetection(receiptUrl);
-              const detections = result.textAnnotations;
-              if (detections && detections.length > 0) {
-                fullText = detections[0].description || '';
-                confidence = detections[0].score || 0;
-                console.log('✅ Text mit textDetection gefunden');
+              console.log('🔄 Versuche documentTextDetection mit original URL');
+              const [result] = await visionClient.documentTextDetection({
+                image: {
+                  source: { imageUri: receiptUrl }
+                }
+              });
+              
+              if (result.fullTextAnnotation) {
+                fullText = result.fullTextAnnotation.text || '';
+                confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
+                console.log('✅ PDF-Text mit original URL extrahiert');
+              } else {
+                throw new Error('No fullTextAnnotation in URL result');
               }
-            } catch (fallbackError: any) {
-              console.error('❌ Alle Methoden fehlgeschlagen:', fallbackError.message);
+            } catch (urlError: any) {
+              console.log('⚠️ Original URL Methode fehlgeschlagen:', urlError.message);
+              
+              // Methode 4: Fallback mit textDetection
+              try {
+                console.log('🔄 Versuche Fallback mit textDetection');
+                const [result] = await visionClient.textDetection(receiptUrl);
+                const detections = result.textAnnotations;
+                if (detections && detections.length > 0) {
+                  fullText = detections[0].description || '';
+                  confidence = detections[0].score || 0;
+                  console.log('✅ Text mit textDetection gefunden');
+                } else {
+                  console.log('⚠️ textDetection hat keine Ergebnisse zurückgegeben');
+                }
+              } catch (fallbackError: any) {
+                console.error('❌ Alle Methoden fehlgeschlagen:', fallbackError.message);
+              }
             }
           }
         }

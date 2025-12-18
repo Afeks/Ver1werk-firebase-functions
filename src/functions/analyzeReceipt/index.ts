@@ -265,7 +265,7 @@ export const analyzeReceipt = functions
                     // Letzter Versuch: PDF mit Puppeteer rendern und Screenshot erstellen
                     console.log('🔄 Versuche PDF mit Puppeteer zu rendern und Screenshot zu erstellen');
                     try {
-                      const screenshotBuffer = await convertPdfToImage(fileBuffer);
+                      const screenshotBuffer = await convertPdfToImage(fileBuffer, receiptUrl);
                       const screenshotBase64 = screenshotBuffer.toString('base64');
                       
                       console.log('📸 Screenshot erstellt, Größe:', screenshotBuffer.length, 'bytes');
@@ -421,7 +421,7 @@ export const analyzeReceipt = functions
 /**
  * Konvertiert eine PDF in ein Bild mit Puppeteer
  */
-async function convertPdfToImage(pdfBuffer: Buffer): Promise<Buffer> {
+async function convertPdfToImage(pdfBuffer: Buffer, receiptUrl: string): Promise<Buffer> {
   const browser = await puppeteer.launch({
     args: chromium.args,
     defaultViewport: chromium.defaultViewport,
@@ -433,54 +433,76 @@ async function convertPdfToImage(pdfBuffer: Buffer): Promise<Buffer> {
   try {
     const page = await browser.newPage();
     
-    // Konvertiere PDF zu Data-URI
-    const pdfBase64 = pdfBuffer.toString('base64');
-    const pdfDataUri = `data:application/pdf;base64,${pdfBase64}`;
+    // Versuche die PDF direkt über die URL zu öffnen (funktioniert besser als Data-URI)
+    console.log('🌐 Öffne PDF über URL:', receiptUrl);
     
-    // Erstelle HTML-Dokument mit eingebetteter PDF
-    const html = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <style>
-            body {
-              margin: 0;
-              padding: 0;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-              background: white;
-            }
-            embed {
-              width: 100%;
-              height: 100vh;
-            }
-          </style>
-        </head>
-        <body>
-          <embed src="${pdfDataUri}" type="application/pdf" />
-        </body>
-      </html>
-    `;
-    
-    await page.setContent(html, {
-      waitUntil: 'networkidle0',
-      timeout: 30000
-    });
-    
-    // Warte kurz, damit PDF geladen wird
-    await page.waitForTimeout(2000);
-    
-    // Erstelle Screenshot
-    const screenshot = (await page.screenshot({
-      type: 'png',
-      fullPage: true
-    })) as Buffer;
-    
-    await browser.close();
-    
-    return screenshot;
+    try {
+      // Öffne die PDF direkt als URL
+      await page.goto(receiptUrl, {
+        waitUntil: 'networkidle0',
+        timeout: 30000
+      });
+      
+      // Warte, damit PDF gerendert wird
+      await page.waitForTimeout(3000);
+      
+      // Erstelle Screenshot
+      const screenshot = (await page.screenshot({
+        type: 'png',
+        fullPage: true
+      })) as Buffer;
+      
+      await browser.close();
+      
+      console.log('✅ Screenshot erfolgreich erstellt');
+      return screenshot;
+    } catch (urlError: any) {
+      console.log('⚠️ PDF-URL-Methode fehlgeschlagen:', urlError.message);
+      console.log('🔄 Versuche alternativ mit Data-URI und iframe');
+      
+      // Fallback: Versuche mit iframe statt embed
+      const pdfBase64 = pdfBuffer.toString('base64');
+      const pdfDataUri = `data:application/pdf;base64,${pdfBase64}`;
+      
+      const html = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <style>
+              body {
+                margin: 0;
+                padding: 0;
+                background: white;
+              }
+              iframe {
+                width: 100vw;
+                height: 100vh;
+                border: none;
+              }
+            </style>
+          </head>
+          <body>
+            <iframe src="${pdfDataUri}" type="application/pdf"></iframe>
+          </body>
+        </html>
+      `;
+      
+      await page.setContent(html, {
+        waitUntil: 'networkidle0',
+        timeout: 30000
+      });
+      
+      await page.waitForTimeout(3000);
+      
+      const screenshot = (await page.screenshot({
+        type: 'png',
+        fullPage: true
+      })) as Buffer;
+      
+      await browser.close();
+      
+      return screenshot;
+    }
   } catch (error: any) {
     await browser.close();
     throw error;

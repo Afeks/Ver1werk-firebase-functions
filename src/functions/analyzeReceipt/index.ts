@@ -4,10 +4,14 @@
  */
 
 import * as functions from 'firebase-functions';
+import * as admin from 'firebase-admin';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 
 // Vision API Client initialisieren
 const visionClient = new ImageAnnotatorClient();
+
+// Firebase Admin Storage
+const bucket = admin.storage().bucket();
 
 interface ReceiptAnalysisRequest {
   receiptUrl: string;
@@ -65,11 +69,105 @@ export const analyzeReceipt = functions
 
       console.log('Analysiere Rechnung:', receiptUrl.substring(0, 100));
 
-      // OCR-Analyse mit Vision API
-      const [result] = await visionClient.textDetection(receiptUrl);
-      const detections = result.textAnnotations;
+      // Extrahiere den Storage-Pfad aus der Firebase Storage URL
+      let gcsUri = receiptUrl;
+      try {
+        // Versuche Firebase Storage URL zu GCS URI zu konvertieren
+        // Format: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?alt=media&token=...
+        const urlMatch = receiptUrl.match(/\/o\/([^?]+)/);
+        if (urlMatch) {
+          const filePath = decodeURIComponent(urlMatch[1]);
+          // Bucket-Name aus URL extrahieren oder Standard verwenden
+          const bucketMatch = receiptUrl.match(/\/b\/([^/]+)/);
+          const bucketName = bucketMatch ? bucketMatch[1] : bucket.name;
+          gcsUri = `gs://${bucketName}/${filePath}`;
+          console.log('📦 Konvertierte URL zu GCS URI:', gcsUri);
+          console.log('📦 Original URL:', receiptUrl);
+          console.log('📦 File Path:', filePath);
+          console.log('📦 Bucket Name:', bucketName);
+        } else {
+          console.log('⚠️ Konnte URL-Pattern nicht matchen');
+        }
+      } catch (urlError: any) {
+        console.log('⚠️ Konnte URL nicht konvertieren:', urlError.message);
+      }
 
-      if (!detections || detections.length === 0) {
+      // Prüfe ob es eine PDF oder ein Bild ist
+      const isPDF = receiptUrl.toLowerCase().includes('.pdf') || receiptUrl.includes('contentType=application%2Fpdf');
+      
+      let fullText = '';
+      let confidence = 0;
+
+      if (isPDF) {
+        // Für PDFs: Versuche zuerst mit GCS URI, dann mit original URL
+        console.log('📄 Erkenne PDF-Datei, versuche verschiedene Methoden');
+        
+        // Methode 1: Versuche documentTextDetection mit GCS URI
+        try {
+          console.log('🔄 Versuche documentTextDetection mit GCS URI');
+          const [result] = await visionClient.documentTextDetection({
+            image: {
+              source: { imageUri: gcsUri }
+            }
+          });
+          
+          if (result.fullTextAnnotation) {
+            fullText = result.fullTextAnnotation.text || '';
+            confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
+            console.log('✅ PDF-Text mit documentTextDetection extrahiert, Länge:', fullText.length);
+            console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
+          }
+        } catch (gcsError: any) {
+          console.log('⚠️ GCS URI Methode fehlgeschlagen:', gcsError.message);
+          
+          // Methode 2: Versuche documentTextDetection mit original URL
+          try {
+            console.log('🔄 Versuche documentTextDetection mit original URL');
+            const [result] = await visionClient.documentTextDetection({
+              image: {
+                source: { imageUri: receiptUrl }
+              }
+            });
+            
+            if (result.fullTextAnnotation) {
+              fullText = result.fullTextAnnotation.text || '';
+              confidence = result.fullTextAnnotation.pages?.[0]?.confidence || 0;
+              console.log('✅ PDF-Text mit original URL extrahiert');
+            }
+          } catch (urlError: any) {
+            console.log('⚠️ Original URL Methode fehlgeschlagen:', urlError.message);
+            
+            // Methode 3: Fallback mit textDetection
+            try {
+              console.log('🔄 Versuche Fallback mit textDetection');
+              const [result] = await visionClient.textDetection(receiptUrl);
+              const detections = result.textAnnotations;
+              if (detections && detections.length > 0) {
+                fullText = detections[0].description || '';
+                confidence = detections[0].score || 0;
+                console.log('✅ Text mit textDetection gefunden');
+              }
+            } catch (fallbackError: any) {
+              console.error('❌ Alle Methoden fehlgeschlagen:', fallbackError.message);
+            }
+          }
+        }
+      } else {
+        // Für Bilder: Verwende normale textDetection
+        console.log('🖼️ Erkenne Bild-Datei, verwende textDetection');
+        const [result] = await visionClient.textDetection(receiptUrl);
+        const detections = result.textAnnotations;
+
+        if (detections && detections.length > 0) {
+          fullText = detections[0].description || '';
+          confidence = detections[0].score || 0;
+          console.log('✅ Bild-Text extrahiert, Länge:', fullText.length);
+        } else {
+          console.log('⚠️ Kein Text im Bild gefunden');
+        }
+      }
+
+      if (!fullText || fullText.trim().length === 0) {
         res.status(200).json({
           text: '',
           extracted: {
@@ -85,9 +183,6 @@ export const analyzeReceipt = functions
         });
         return;
       }
-
-      const fullText = detections[0].description || '';
-      const confidence = detections[0].score || 0;
 
       console.log('OCR Text extrahiert:', fullText.substring(0, 200));
 

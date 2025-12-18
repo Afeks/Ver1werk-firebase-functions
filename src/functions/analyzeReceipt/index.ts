@@ -518,7 +518,7 @@ async function convertPdfToImage(pdfBuffer: Buffer, receiptUrl: string): Promise
       
       // Warte auf PDF.js, bis die PDF gerendert ist
       await page.waitForFunction(() => {
-        const canvas = document.getElementById('canvas');
+        const canvas = document.getElementById('canvas') as HTMLCanvasElement;
         return canvas && canvas.width > 0 && canvas.height > 0;
       }, { timeout: 30000 });
       

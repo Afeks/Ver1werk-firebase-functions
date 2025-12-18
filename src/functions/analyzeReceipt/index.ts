@@ -116,7 +116,9 @@ export const analyzeReceipt = functions
           
           console.log('📊 Vision API Response erhalten');
           console.log('📊 result.fullTextAnnotation:', result.fullTextAnnotation ? 'vorhanden' : 'null/undefined');
-          console.log('📊 result.error:', result.error ? JSON.stringify(result.error) : 'kein Fehler');
+          console.log('📊 result.error:', result.error ? JSON.stringify(result.error, null, 2) : 'kein Fehler');
+          console.log('📊 result.error details:', result.error?.details ? JSON.stringify(result.error.details, null, 2) : 'keine Details');
+          console.log('📊 Vollständige Response (erste 500 Zeichen):', JSON.stringify(result).substring(0, 500));
           
           if (result.fullTextAnnotation) {
             fullText = result.fullTextAnnotation.text || '';
@@ -150,20 +152,66 @@ export const analyzeReceipt = functions
                 const base64Content = fileBuffer.toString('base64');
                 console.log('📥 Datei geladen, Größe:', fileBuffer.length, 'bytes');
                 
-                // Prüfe, ob die PDF gültig ist
+                // Detaillierte PDF-Analyse
                 try {
                   const pdfDoc = await PDFDocument.load(fileBuffer);
                   const pageCount = pdfDoc.getPageCount();
                   console.log('✅ PDF ist gültig, Seitenanzahl:', pageCount);
+                  
+                  // PDF-Metadaten analysieren
+                  try {
+                    const pdfInfo = (pdfDoc as any).catalog?.Info;
+                    if (pdfInfo) {
+                      console.log('📄 PDF-Info:', {
+                        Title: pdfInfo.get('Title'),
+                        Author: pdfInfo.get('Author'),
+                        Creator: pdfInfo.get('Creator'),
+                        Producer: pdfInfo.get('Producer'),
+                      });
+                    }
+                  } catch (infoError: any) {
+                    console.log('⚠️ Konnte PDF-Info nicht lesen:', infoError.message);
+                  }
+                  
+                  // Prüfe erste Bytes, um den PDF-Typ zu erkennen
+                  const firstBytes = fileBuffer.slice(0, 100).toString('ascii');
+                  console.log('📄 Erste 100 Bytes der PDF:', firstBytes.substring(0, 100));
+                  
+                  // Prüfe, ob die PDF Bilder enthält
+                  try {
+                    const pages = pdfDoc.getPages();
+                    if (pages.length > 0) {
+                      const firstPage = pages[0];
+                      const { width, height } = firstPage.getSize();
+                      console.log('📏 Erste Seite: Breite:', width, 'Höhe:', height);
+                    }
+                  } catch (pageError: any) {
+                    console.log('⚠️ Konnte Seiten-Informationen nicht lesen:', pageError.message);
+                  }
                   
                   // Prüfe, ob die PDF verschlüsselt ist
                   const isEncrypted = (pdfDoc as any).isEncrypted;
                   if (isEncrypted) {
                     console.log('⚠️ PDF ist verschlüsselt - Vision API kann sie nicht verarbeiten');
                   }
+                  
+                  // Prüfe PDF-Version
+                  const pdfVersion = (pdfDoc as any).context?.header;
+                  console.log('📄 PDF-Version/Header:', pdfVersion ? pdfVersion.substring(0, 50) : 'unbekannt');
+                  
                 } catch (pdfError: any) {
                   console.log('⚠️ PDF-Validierung fehlgeschlagen:', pdfError.message);
+                  console.log('⚠️ Error Stack:', pdfError.stack);
                   console.log('⚠️ Möglicherweise ist die PDF beschädigt oder hat ein ununterstütztes Format');
+                  
+                  // Prüfe die ersten Bytes trotzdem
+                  try {
+                    const firstBytes = fileBuffer.slice(0, 100).toString('ascii');
+                    console.log('📄 Erste 100 Bytes (trotz Fehler):', firstBytes.substring(0, 100));
+                    console.log('📄 Ist PDF (magic number)?', firstBytes.startsWith('%PDF'));
+                  } catch (bytesError: any) {
+                    console.log('⚠️ Konnte erste Bytes nicht lesen:', bytesError.message);
+                  }
                 }
                 
                 const [result] = await visionClient.documentTextDetection({
@@ -174,8 +222,11 @@ export const analyzeReceipt = functions
                 
                 console.log('📊 Base64 Vision API Response erhalten');
                 console.log('📊 result.fullTextAnnotation:', result.fullTextAnnotation ? 'vorhanden' : 'null/undefined');
-                console.log('📊 result.error:', result.error ? JSON.stringify(result.error) : 'kein Fehler');
+                console.log('📊 result.error:', result.error ? JSON.stringify(result.error, null, 2) : 'kein Fehler');
+                console.log('📊 result.error details:', result.error?.details ? JSON.stringify(result.error.details, null, 2) : 'keine Details');
                 console.log('📊 result.textAnnotations:', result.textAnnotations ? `${result.textAnnotations.length} Annotations` : 'null/undefined');
+                console.log('📊 Base64 Content Länge:', base64Content.length, 'Zeichen');
+                console.log('📊 Base64 Content (erste 200 Zeichen):', base64Content.substring(0, 200));
                 
                 if (result.fullTextAnnotation) {
                   fullText = result.fullTextAnnotation.text || '';
@@ -262,7 +313,8 @@ export const analyzeReceipt = functions
               
               console.log('📊 URL Vision API Response erhalten');
               console.log('📊 result.fullTextAnnotation:', result.fullTextAnnotation ? 'vorhanden' : 'null/undefined');
-              console.log('📊 result.error:', result.error ? JSON.stringify(result.error) : 'kein Fehler');
+              console.log('📊 result.error:', result.error ? JSON.stringify(result.error, null, 2) : 'kein Fehler');
+              console.log('📊 result.error details:', result.error?.details ? JSON.stringify(result.error.details, null, 2) : 'keine Details');
               
               if (result.fullTextAnnotation) {
                 fullText = result.fullTextAnnotation.text || '';

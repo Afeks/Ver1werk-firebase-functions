@@ -7,6 +7,8 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
 import { PDFDocument } from 'pdf-lib';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 
 // Vision API Client initialisieren
 const visionClient = new ImageAnnotatorClient();
@@ -39,7 +41,7 @@ export const analyzeReceipt = functions
   .region('europe-west1')
   .runWith({
     timeoutSeconds: 60,
-    memory: '512MB'
+    memory: '1GB' // Erhöht für Puppeteer
   })
   .https
   .onRequest(async (req, res) => {
@@ -208,7 +210,36 @@ export const analyzeReceipt = functions
                     }
                   } catch (textDetError: any) {
                     console.log('⚠️ textDetection (Base64) fehlgeschlagen:', textDetError.message);
-                    throw new Error('No fullTextAnnotation in Base64 result');
+                    
+                    // Letzter Versuch: PDF mit Puppeteer rendern und Screenshot erstellen
+                    console.log('🔄 Versuche PDF mit Puppeteer zu rendern und Screenshot zu erstellen');
+                    try {
+                      const screenshotBuffer = await convertPdfToImage(fileBuffer);
+                      const screenshotBase64 = screenshotBuffer.toString('base64');
+                      
+                      console.log('📸 Screenshot erstellt, Größe:', screenshotBuffer.length, 'bytes');
+                      
+                      // Versuche textDetection mit dem Screenshot
+                      const [screenshotResult] = await visionClient.textDetection({
+                        image: {
+                          content: screenshotBase64
+                        }
+                      });
+                      
+                      if (screenshotResult.textAnnotations && screenshotResult.textAnnotations.length > 0) {
+                        fullText = screenshotResult.textAnnotations[0].description || '';
+                        confidence = screenshotResult.textAnnotations[0].score || 0;
+                        console.log('✅ Text mit Puppeteer-Screenshot extrahiert, Länge:', fullText.length);
+                        if (fullText.length > 0) {
+                          console.log('📝 Erste 500 Zeichen:', fullText.substring(0, 500));
+                        }
+                      } else {
+                        throw new Error('No text found in screenshot');
+                      }
+                    } catch (puppeteerError: any) {
+                      console.log('⚠️ Puppeteer-Methode fehlgeschlagen:', puppeteerError.message);
+                      throw new Error('No fullTextAnnotation in Base64 result');
+                    }
                   }
                 }
               } else {
@@ -334,6 +365,76 @@ export const analyzeReceipt = functions
       });
     }
   });
+
+/**
+ * Konvertiert eine PDF in ein Bild mit Puppeteer
+ */
+async function convertPdfToImage(pdfBuffer: Buffer): Promise<Buffer> {
+  const browser = await puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless === true ? true : 'new',
+    ignoreHTTPSErrors: true,
+  });
+
+  try {
+    const page = await browser.newPage();
+    
+    // Konvertiere PDF zu Data-URI
+    const pdfBase64 = pdfBuffer.toString('base64');
+    const pdfDataUri = `data:application/pdf;base64,${pdfBase64}`;
+    
+    // Erstelle HTML-Dokument mit eingebetteter PDF
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            body {
+              margin: 0;
+              padding: 0;
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              min-height: 100vh;
+              background: white;
+            }
+            embed {
+              width: 100%;
+              height: 100vh;
+            }
+          </style>
+        </head>
+        <body>
+          <embed src="${pdfDataUri}" type="application/pdf" />
+        </body>
+      </html>
+    `;
+    
+    await page.setContent(html, {
+      waitUntil: 'networkidle0',
+      timeout: 30000
+    });
+    
+    // Warte kurz, damit PDF geladen wird
+    await page.waitForTimeout(2000);
+    
+    // Erstelle Screenshot
+    const screenshot = await page.screenshot({
+      type: 'png',
+      fullPage: true,
+      encoding: 'binary' as any
+    }) as Buffer;
+    
+    await browser.close();
+    
+    return screenshot;
+  } catch (error: any) {
+    await browser.close();
+    throw error;
+  }
+}
 
 /**
  * Parst den OCR-Text und extrahiert relevante Felder

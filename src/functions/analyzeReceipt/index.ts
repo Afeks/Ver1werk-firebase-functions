@@ -458,31 +458,55 @@ async function convertPdfToImage(pdfBuffer: Buffer, receiptUrl: string): Promise
       return screenshot;
     } catch (urlError: any) {
       console.log('⚠️ PDF-URL-Methode fehlgeschlagen:', urlError.message);
-      console.log('🔄 Versuche alternativ mit Data-URI und iframe');
+      console.log('🔄 Versuche alternativ mit PDF.js');
       
-      // Fallback: Versuche mit iframe statt embed
+      // Fallback: Verwende PDF.js zum Rendern der PDF
       const pdfBase64 = pdfBuffer.toString('base64');
-      const pdfDataUri = `data:application/pdf;base64,${pdfBase64}`;
       
       const html = `
         <!DOCTYPE html>
         <html>
           <head>
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
             <style>
               body {
                 margin: 0;
-                padding: 0;
+                padding: 20px;
                 background: white;
               }
-              iframe {
-                width: 100vw;
-                height: 100vh;
-                border: none;
+              #canvas {
+                border: 1px solid #ccc;
               }
             </style>
           </head>
           <body>
-            <iframe src="${pdfDataUri}" type="application/pdf"></iframe>
+            <canvas id="canvas"></canvas>
+            <script>
+              (async function() {
+                try {
+                  const pdfData = atob('${pdfBase64}');
+                  const loadingTask = pdfjsLib.getDocument({ data: pdfData });
+                  const pdf = await loadingTask.promise;
+                  const page = await pdf.getPage(1);
+                  
+                  const viewport = page.getViewport({ scale: 2.0 });
+                  const canvas = document.getElementById('canvas');
+                  const context = canvas.getContext('2d');
+                  
+                  canvas.height = viewport.height;
+                  canvas.width = viewport.width;
+                  
+                  await page.render({
+                    canvasContext: context,
+                    viewport: viewport
+                  }).promise;
+                  
+                  console.log('PDF rendered successfully');
+                } catch (error) {
+                  console.error('PDF.js error:', error);
+                }
+              })();
+            </script>
           </body>
         </html>
       `;
@@ -492,7 +516,14 @@ async function convertPdfToImage(pdfBuffer: Buffer, receiptUrl: string): Promise
         timeout: 30000
       });
       
-      await page.waitForTimeout(3000);
+      // Warte auf PDF.js, bis die PDF gerendert ist
+      await page.waitForFunction(() => {
+        const canvas = document.getElementById('canvas');
+        return canvas && canvas.width > 0 && canvas.height > 0;
+      }, { timeout: 30000 });
+      
+      // Zusätzliche Wartezeit, damit alles gerendert wird
+      await page.waitForTimeout(2000);
       
       const screenshot = (await page.screenshot({
         type: 'png',

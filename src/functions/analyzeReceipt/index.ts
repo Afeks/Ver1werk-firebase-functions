@@ -56,7 +56,7 @@ export const analyzeReceipt = functions
     }
 
     try {
-      const { receiptUrl, associationId }: ReceiptAnalysisRequest = req.body;
+      const { receiptUrl }: ReceiptAnalysisRequest = req.body;
 
       if (!receiptUrl) {
         res.status(400).json({ error: 'receiptUrl ist erforderlich' });

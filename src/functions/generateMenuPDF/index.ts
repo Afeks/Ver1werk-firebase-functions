@@ -1,6 +1,6 @@
 /**
  * Generiert ein PDF aus HTML für den MenuDesigner
- * HTTP Endpoint: POST /generateMenuPDF
+ * HTTP Endpoints: POST /generateMenuPDF-dev und POST /generateMenuPDF-prod
  */
 
 import * as functions from 'firebase-functions';
@@ -8,19 +8,36 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { PDFDocument } from 'pdf-lib';
 
-export const generateMenuPDF = functions
-  .region('europe-west1')
-  .runWith({
-    timeoutSeconds: 540,
-    memory: '1GB'
-  })
-  .https
-  .onRequest(async (req, res) => {
-    // CORS-Header setzen - WICHTIG: Vor allem Response senden
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.set('Access-Control-Max-Age', '3600');
+/**
+ * Helper-Funktion zum Erstellen einer generateMenuPDF Function mit CORS-Konfiguration
+ */
+function createGenerateMenuPDFFunction(isProduction: boolean) {
+  return functions
+    .region('europe-west1')
+    .runWith({
+      timeoutSeconds: 540,
+      memory: isProduction ? '2GB' : '1GB' // Mehr Memory für Production
+    })
+    .https
+    .onRequest(async (req, res) => {
+      // CORS-Header setzen - unterschiedlich für Dev/Prod
+      if (isProduction) {
+        // Strikte CORS für Production - nur erlaubte Origins
+        const allowedOrigins = [
+          'https://ver1werk.de',
+          'https://www.ver1werk.de'
+        ];
+        const origin = req.headers.origin;
+        if (origin && allowedOrigins.includes(origin)) {
+          res.set('Access-Control-Allow-Origin', origin);
+        }
+      } else {
+        // Lockeres CORS für Development
+        res.set('Access-Control-Allow-Origin', '*');
+      }
+      res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.set('Access-Control-Max-Age', '3600');
 
     // OPTIONS Preflight Request
     if (req.method === 'OPTIONS') {
@@ -532,4 +549,9 @@ export const generateMenuPDF = functions
       });
     }
   });
+}
+
+// Exportiere Dev- und Prod-Varianten
+export const generateMenuPDFDev = createGenerateMenuPDFFunction(false);
+export const generateMenuPDFProd = createGenerateMenuPDFFunction(true);
 

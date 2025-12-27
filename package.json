@@ -9,8 +9,8 @@
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "deploy:dev": "firebase deploy --only functions:generateMenuPDF-dev,functions:analyzeReceipt-dev --project ver1werk",
-    "deploy:prod": "firebase deploy --only functions:generateMenuPDF-prod,functions:analyzeReceipt-prod --project ver1werk",
+    "deploy:dev": "firebase deploy --only functions:generateMenuPDFDev,functions:analyzeReceiptDev --project ver1werk",
+    "deploy:prod": "firebase deploy --only functions:generateMenuPDFProd,functions:analyzeReceiptProd --project ver1werk",
     "deploy:all": "firebase deploy --only functions --project ver1werk",
     "logs": "firebase functions:log"
   },

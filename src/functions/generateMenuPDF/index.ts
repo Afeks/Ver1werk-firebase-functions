@@ -552,6 +552,7 @@ function createGenerateMenuPDFFunction(isProduction: boolean) {
 }
 
 // Exportiere Dev- und Prod-Varianten
+// Hinweis: Die Namen werden in index.ts beim Export geändert, um Bindestriche zu unterstützen
 export const generateMenuPDFDev = createGenerateMenuPDFFunction(false);
 export const generateMenuPDFProd = createGenerateMenuPDFFunction(true);
 

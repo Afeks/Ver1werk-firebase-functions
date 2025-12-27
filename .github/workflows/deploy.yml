@@ -33,13 +33,13 @@ jobs:
       - name: Deploy Development Functions
         if: github.ref == 'refs/heads/development'
         run: |
-          firebase deploy --only functions:generateMenuPDF-dev,functions:analyzeReceipt-dev \
+          firebase deploy --only functions:generateMenuPDFDev,functions:analyzeReceiptDev \
             --project ver1werk \
             --token "${{ secrets.FIREBASE_TOKEN }}"
 
       - name: Deploy Production Functions
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: |
-          firebase deploy --only functions:generateMenuPDF-prod,functions:analyzeReceipt-prod \
+          firebase deploy --only functions:generateMenuPDFProd,functions:analyzeReceiptProd \
             --project ver1werk \
             --token "${{ secrets.FIREBASE_TOKEN }}"

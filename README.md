@@ -14,7 +14,6 @@ Dieses Projekt verwendet GitHub Actions für automatisches Deployment. Bei jedem
    ```
    Dies gibt dir ein Token, das du für GitHub Actions verwenden kannst.
 
-
 2. Füge GitHub Secrets hinzu:
    - Gehe zu deinem GitHub Repository > Settings > Secrets and variables > Actions
    - Füge folgendes Secret hinzu:

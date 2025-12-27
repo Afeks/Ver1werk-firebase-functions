@@ -636,7 +636,7 @@ const buildTicketAttachments = async (
 
   // Wenn mehrere Tickets, erstelle für jedes ein PDF
   const ticketCount = quantity || seatArray.length || 1;
-  
+
   functions.logger.info('buildTicketAttachments: Starte PDF-Generierung', {
     ticketCount,
     quantity,
@@ -672,7 +672,7 @@ const buildTicketAttachments = async (
         filename: fileName,
         content: pdfBuffer,
       });
-      
+
       functions.logger.info(`PDF erfolgreich generiert für Ticket ${i + 1}`, {
         fileName,
         pdfSize: pdfBuffer.length,
@@ -812,7 +812,7 @@ const sendEmail = async ({
   }
 
   await transporter.sendMail(mailOptions);
-  
+
   functions.logger.info('E-Mail erfolgreich versendet via sendEmail', {
     to,
     subject,
@@ -900,7 +900,7 @@ const handleEmailDocument = async (
 
     // Generiere Attachments für Ticket-E-Mails
     let attachments: Array<{ filename: string; content: Buffer }> = [];
-    
+
     functions.logger.info('Prüfe Attachments-Generierung', {
       docId: docRef.id,
       type: emailData.type,
@@ -914,9 +914,9 @@ const handleEmailDocument = async (
           docId: docRef.id,
           context: emailData.context,
         });
-        
+
         attachments = await buildTicketAttachments(associationId, emailData);
-        
+
         functions.logger.info(
           `Generierte ${attachments.length} PDF-Attachments für Ticket-E-Mail`,
           {

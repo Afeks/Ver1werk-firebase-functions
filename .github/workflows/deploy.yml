@@ -3,12 +3,16 @@ name: Deploy Firebase Functions
 on:
   push:
     branches:
+      - master
       - main
+      - development
 
 jobs:
-  deploy:
+  deploy-production:
+    name: Deploy to Production
     runs-on: ubuntu-latest
-
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,5 +32,44 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
-      - name: Deploy to Firebase
-        run: firebase deploy --only functions --project ver1werk --token "${{ secrets.FIREBASE_TOKEN }}"
+      - name: Deploy to Firebase Production
+        run: |
+          echo "🚀 Deploying to Production Firebase (ver1werk)..."
+          firebase deploy --only functions \
+            --project ver1werk \
+            --token "${{ secrets.FIREBASE_TOKEN }}" \
+            --force || true
+          firebase functions:artifacts:setpolicy --project ver1werk --token "${{ secrets.FIREBASE_TOKEN }}" --force || true
+
+  deploy-development:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/development'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Deploy to Firebase Development
+        run: |
+          echo "🚀 Deploying to Development Firebase (ver1werk-dev)..."
+          firebase deploy --only functions \
+            --project ver1werk-dev \
+            --token "${{ secrets.FIREBASE_TOKEN_DEV || secrets.FIREBASE_TOKEN }}" \
+            --force || true
+          firebase functions:artifacts:setpolicy --project ver1werk-dev --token "${{ secrets.FIREBASE_TOKEN_DEV || secrets.FIREBASE_TOKEN }}" --force || true

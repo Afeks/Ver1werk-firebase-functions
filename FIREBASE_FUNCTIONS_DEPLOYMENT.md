@@ -154,3 +154,13 @@ Folgende Functions werden deployed:
 
 Alle Functions werden in beiden Umgebungen (Production und Development) deployed.
 
+## Firestore Datenbank-Konfiguration
+
+Beide Umgebungen verwenden die `(default)` Datenbank:
+- **Production** (`ver1werk`): `(default)` Datenbank
+- **Development** (`ver1werk-dev`): `(default)` Datenbank
+
+**Hinweis**: 
+- Firestore Triggers in Firebase Functions v1 hören automatisch auf die `(default)` Datenbank
+- Die Daten werden durch Projekt-Trennung isoliert (Development vs. Production)
+

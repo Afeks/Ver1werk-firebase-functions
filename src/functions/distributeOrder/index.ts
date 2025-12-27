@@ -8,30 +8,6 @@ import * as functions from 'firebase-functions';
 import { distributeOrder } from '../../shared/distribute-order';
 import { DistributeOrderRequest, DistributeOrderResponse } from '../../shared/types';
 
-/**
- * Request Body:
- * {
- *   eventId: string,
- *   items: Item[],
- *   servingPoint: ServingPoint,
- *   userId?: string,
- *   distributionMode?: 'balanced' | 'grouped',
- *   note?: string
- * }
- * 
- * Response:
- * {
- *   success: boolean,
- *   purchaseId: string,
- *   distributedPurchases: Array<{
- *     pointOfSaleId: string,
- *     pointOfSaleName: string,
- *     orderId: string,
- *     itemsCount: number
- *   }>,
- *   error?: string
- * }
- */
 export const distributeOrderFunction = functions
   .region('europe-west1')
   .https.onCall(

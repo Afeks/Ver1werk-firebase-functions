@@ -13,7 +13,7 @@ if (!admin.apps.length) {
 // Exportiere alle Functions
 export { distributeOrderFunction } from './functions/distributeOrder';
 export { onPurchaseCreated } from './functions/purchaseTrigger';
-export { generateMenuPDFDev, generateMenuPDFProd } from './functions/generateMenuPDF';
+export { generateMenuPDF } from './functions/generateMenuPDF';
 export { onPosItemAvailabilityChanged } from './functions/itemAvailability';
 export { onNotificationRefundUpdate } from './functions/refundHandler';
 export { onOrderCreated } from './functions/orderCreated';
@@ -21,4 +21,4 @@ export {
   onEmailQueued,
   processEmailQueue,
 } from './functions/email-worker';
-export { analyzeReceiptDev, analyzeReceiptProd } from './functions/analyzeReceipt';
+export { analyzeReceipt } from './functions/analyzeReceipt';

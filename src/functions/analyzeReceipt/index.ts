@@ -1,6 +1,6 @@
 /**
  * Analysiert eine Rechnung/Quittung mit Google Cloud Vision API
- * HTTP Endpoints: POST /analyzeReceipt-dev und POST /analyzeReceipt-prod
+ * HTTP Endpoint: POST /analyzeReceipt
  */
 
 import * as functions from 'firebase-functions';
@@ -37,36 +37,19 @@ interface ReceiptAnalysisResponse {
   message?: string;
 }
 
-/**
- * Helper-Funktion zum Erstellen einer analyzeReceipt Function mit CORS-Konfiguration
- */
-function createAnalyzeReceiptFunction(isProduction: boolean) {
-  return functions
-    .region('europe-west1')
-    .runWith({
-      timeoutSeconds: 60,
-      memory: isProduction ? '2GB' : '1GB' // Mehr Memory für Production
-    })
-    .https
-    .onRequest(async (req, res) => {
-      // CORS-Header setzen - unterschiedlich für Dev/Prod
-      if (isProduction) {
-        // Strikte CORS für Production - nur erlaubte Origins
-        const allowedOrigins = [
-          'https://ver1werk.de',
-          'https://www.ver1werk.de'
-        ];
-        const origin = req.headers.origin;
-        if (origin && allowedOrigins.includes(origin)) {
-          res.set('Access-Control-Allow-Origin', origin);
-        }
-      } else {
-        // Lockeres CORS für Development
-        res.set('Access-Control-Allow-Origin', '*');
-      }
-      res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      res.set('Access-Control-Max-Age', '3600');
+export const analyzeReceipt = functions
+  .region('europe-west1')
+  .runWith({
+    timeoutSeconds: 60,
+    memory: '1GB' // Erhöht für Puppeteer
+  })
+  .https
+  .onRequest(async (req, res) => {
+    // CORS-Header setzen
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.set('Access-Control-Max-Age', '3600');
 
     // OPTIONS Preflight Request
     if (req.method === 'OPTIONS') {
@@ -434,7 +417,6 @@ function createAnalyzeReceiptFunction(isProduction: boolean) {
       });
     }
   });
-}
 
 /**
  * Konvertiert eine PDF in ein Bild mit Puppeteer
@@ -663,8 +645,4 @@ function parseReceiptData(text: string): ExtractedData {
 
   return extracted;
 }
-
-// Exportiere Dev- und Prod-Varianten
-export const analyzeReceiptDev = createAnalyzeReceiptFunction(false);
-export const analyzeReceiptProd = createAnalyzeReceiptFunction(true);
 

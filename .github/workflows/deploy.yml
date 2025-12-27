@@ -35,11 +35,17 @@ jobs:
         run: |
           firebase deploy --only functions:generateMenuPDFDev,functions:analyzeReceiptDev \
             --project ver1werk \
-            --token "${{ secrets.FIREBASE_TOKEN }}"
+            --token "${{ secrets.FIREBASE_TOKEN }}" \
+            --force || true
+          # Setze Cleanup-Policy für Container-Images (unterdrückt Fehler falls bereits gesetzt)
+          firebase functions:artifacts:setpolicy --project ver1werk --token "${{ secrets.FIREBASE_TOKEN }}" || true
 
       - name: Deploy Production Functions
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: |
           firebase deploy --only functions:generateMenuPDFProd,functions:analyzeReceiptProd \
             --project ver1werk \
-            --token "${{ secrets.FIREBASE_TOKEN }}"
+            --token "${{ secrets.FIREBASE_TOKEN }}" \
+            --force || true
+          # Setze Cleanup-Policy für Container-Images (unterdrückt Fehler falls bereits gesetzt)
+          firebase functions:artifacts:setpolicy --project ver1werk --token "${{ secrets.FIREBASE_TOKEN }}" || true

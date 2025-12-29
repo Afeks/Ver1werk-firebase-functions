@@ -503,11 +503,16 @@ const generateTicketPdf = async ({
   functions.logger.info('generateTicketPdf: Final info lines', {
     infoLinesCount: infoLines.length,
     infoLines,
+    hasNormalizedInfoArea: !!normalizedInfoArea,
   });
   
   const hasInfoArea = !!normalizedInfoArea && infoLines.length > 0;
 
   if (hasInfoArea && normalizedInfoArea) {
+    functions.logger.info('generateTicketPdf: Zeichne Info-Lines in InfoArea', {
+      area: normalizedInfoArea,
+      linesCount: infoLines.length,
+    });
     drawTicketInfoText({
       page,
       area: normalizedInfoArea,
@@ -515,7 +520,11 @@ const generateTicketPdf = async ({
       font,
       fontSize,
     });
-  } else {
+  } else if (infoLines.length > 0) {
+    functions.logger.info('generateTicketPdf: Keine InfoArea definiert, verwende Fallback-Position', {
+      infoLinesCount: infoLines.length,
+      hasTemplate: !!templateAsset,
+    });
     let yPos = pageHeight - 50;
 
     if (associationName) {
@@ -646,7 +655,7 @@ const buildTicketAttachments = async (
   let templateUrl = ticketTemplatePdfUrl || null;
   let designSettings: TicketDesignSettings | null = null;
 
-  if (!templateUrl || !qrArea) {
+  if (!templateUrl || !qrArea || !infoArea) {
     designSettings = await loadTicketDesignSettings(associationId);
     if (!templateUrl) {
       templateUrl =
@@ -678,8 +687,10 @@ const buildTicketAttachments = async (
     seatArrayLength: seatArray.length,
     templateType: templateAsset?.type || 'none',
     hasQrArea: !!qrArea,
+    hasInfoArea: !!infoArea,
     eventDate,
     eventDateType: typeof eventDate,
+    eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
   });
 
   for (let i = 0; i < ticketCount; i++) {

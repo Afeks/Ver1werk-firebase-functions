@@ -549,12 +549,12 @@ const generateTicketPdf = async ({
     pageHeight
   );
 
-  // QR-Code im definierten Bereich platzieren
+  // QR-Code im definierten Bereich zentriert platzieren
   const qrSize = Math.min(normalizedQrArea.width, normalizedQrArea.height);
-  // Positioniere QR-Code in der linken oberen Ecke der Area
+  // Zentriere den QR-Code horizontal und vertikal in der Area
   // normalizedQrArea.y ist von oben, PDF verwendet Y von unten
-  const qrX = normalizedQrArea.x;
-  const qrY = pageHeight - normalizedQrArea.y - qrSize;
+  const qrX = normalizedQrArea.x + (normalizedQrArea.width - qrSize) / 2;
+  const qrY = pageHeight - normalizedQrArea.y - normalizedQrArea.height + (normalizedQrArea.height - qrSize) / 2;
   
   functions.logger.info('generateTicketPdf: QR-Code Positionierung', {
     qrArea: qrArea || 'DEFAULT',
@@ -568,6 +568,8 @@ const generateTicketPdf = async ({
     qrAreaY: normalizedQrArea.y,
     qrAreaWidth: normalizedQrArea.width,
     qrAreaHeight: normalizedQrArea.height,
+    centeredX: qrX,
+    centeredY: qrY,
   });
   
   page.drawImage(qrImage, {

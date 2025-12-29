@@ -472,8 +472,19 @@ const generateTicketPdf = async ({
   
   // Baue Info-Zeilen auf, wobei nur nicht-leere Werte hinzugefügt werden
   const infoLines: string[] = [];
+  functions.logger.info('generateTicketPdf: Starte Info-Lines Aufbau', {
+    ticketName,
+    eventDate,
+    eventDateType: typeof eventDate,
+    eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
+    eventDateConstructor: eventDate ? eventDate.constructor?.name : 'null/undefined',
+    seatLabel,
+    seatLabelType: typeof seatLabel,
+  });
+  
   if (ticketName && ticketName.trim()) {
     infoLines.push(ticketName.trim());
+    functions.logger.info('generateTicketPdf: Ticket-Name hinzugefügt', { ticketName: ticketName.trim() });
   }
   
   // Event-Datum formatieren
@@ -481,11 +492,21 @@ const generateTicketPdf = async ({
   functions.logger.info('generateTicketPdf: Date formatting', {
     eventDate,
     eventDateType: typeof eventDate,
+    eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
+    eventDateConstructor: eventDate ? eventDate.constructor?.name : 'null/undefined',
     dateText,
     hasDateText: !!dateText && dateText.trim().length > 0,
   });
   if (dateText && dateText.trim()) {
     infoLines.push(dateText.trim());
+    functions.logger.info('generateTicketPdf: Datum-Text hinzugefügt', { dateText: dateText.trim() });
+  } else {
+    functions.logger.warn('generateTicketPdf: Datum-Text wurde NICHT hinzugefügt', {
+      dateText,
+      dateTextLength: dateText?.length || 0,
+      eventDate,
+      eventDateType: typeof eventDate,
+    });
   }
   
   // Sitzplatz-Label hinzufügen (nur wenn vorhanden)
@@ -498,12 +519,19 @@ const generateTicketPdf = async ({
   });
   if (seatLabel && typeof seatLabel === 'string' && seatLabel.trim()) {
     infoLines.push(seatLabel.trim());
+    functions.logger.info('generateTicketPdf: Sitzplatz-Label hinzugefügt', { seatLabel: seatLabel.trim() });
+  } else {
+    functions.logger.warn('generateTicketPdf: Sitzplatz-Label wurde NICHT hinzugefügt', {
+      seatLabel,
+      seatLabelType: typeof seatLabel,
+    });
   }
   
   functions.logger.info('generateTicketPdf: Final info lines', {
     infoLinesCount: infoLines.length,
     infoLines,
     hasNormalizedInfoArea: !!normalizedInfoArea,
+    normalizedInfoArea,
   });
   
   const hasInfoArea = !!normalizedInfoArea && infoLines.length > 0;
@@ -638,8 +666,13 @@ const buildTicketAttachments = async (
     eventDate,
     eventDateType: typeof eventDate,
     eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
+    eventDateConstructor: eventDate ? eventDate.constructor?.name : 'null/undefined',
+    eventDateToString: eventDate ? eventDate.toString() : 'null/undefined',
     quantity,
     associationName,
+    hasTicketTemplatePdfUrl: !!ticketTemplatePdfUrl,
+    hasTicketTemplateQrArea: !!ticketTemplateQrArea,
+    hasTicketTemplateInfoArea: !!ticketTemplateInfoArea,
   });
 
   if (!orderId || !ticketName) {
@@ -701,10 +734,16 @@ const buildTicketAttachments = async (
 
     functions.logger.info(`Generiere PDF für Ticket ${i + 1}`, {
       seatLabel,
+      seatLabelType: typeof seatLabel,
       seat,
       hasSeat: !!seat,
+      seatKeys: seat ? Object.keys(seat) : [],
       eventDate,
       eventDateType: typeof eventDate,
+      eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
+      eventDateConstructor: eventDate ? eventDate.constructor?.name : 'null/undefined',
+      hasInfoArea: !!infoArea,
+      infoArea,
     });
 
     try {

@@ -708,7 +708,7 @@ const buildTicketAttachments = async (
         orderId,
       });
 
-      const fileName = `Ticket_${sanitizeFileSegment(ticketName)}_${sanitizeFileSegment(seatLabel)}.pdf`;
+      const fileName = `Ticket_${sanitizeFileSegment(ticketName)}_${sanitizeFileSegment(seatLabel ?? undefined)}.pdf`;
       attachments.push({
         filename: fileName,
         content: pdfBuffer,

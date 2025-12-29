@@ -552,9 +552,14 @@ const generateTicketPdf = async ({
   // QR-Code im definierten Bereich zentriert platzieren
   const qrSize = Math.min(normalizedQrArea.width, normalizedQrArea.height);
   // Zentriere den QR-Code horizontal und vertikal in der Area
-  // normalizedQrArea.y ist von oben, PDF verwendet Y von unten
+  // normalizedQrArea.y ist die obere Kante von oben (0 = oben)
+  // PDF verwendet Y von unten, und drawImage y ist die untere Kante des Bildes
   const qrX = normalizedQrArea.x + (normalizedQrArea.width - qrSize) / 2;
-  const qrY = pageHeight - normalizedQrArea.y - normalizedQrArea.height + (normalizedQrArea.height - qrSize) / 2;
+  // Area obere Kante von unten: pageHeight - normalizedQrArea.y
+  // Area untere Kante von unten: pageHeight - normalizedQrArea.y - normalizedQrArea.height
+  // Zentrum der Area von unten: pageHeight - normalizedQrArea.y - normalizedQrArea.height / 2
+  // QR-Code untere Kante (für drawImage): Zentrum - qrSize / 2
+  const qrY = pageHeight - normalizedQrArea.y - normalizedQrArea.height / 2 - qrSize / 2;
   
   functions.logger.info('generateTicketPdf: QR-Code Positionierung', {
     qrArea: qrArea || 'DEFAULT',
@@ -568,8 +573,9 @@ const generateTicketPdf = async ({
     qrAreaY: normalizedQrArea.y,
     qrAreaWidth: normalizedQrArea.width,
     qrAreaHeight: normalizedQrArea.height,
-    centeredX: qrX,
-    centeredY: qrY,
+    areaTopFromBottom: pageHeight - normalizedQrArea.y,
+    areaBottomFromBottom: pageHeight - normalizedQrArea.y - normalizedQrArea.height,
+    areaCenterFromBottom: pageHeight - normalizedQrArea.y - normalizedQrArea.height / 2,
   });
   
   page.drawImage(qrImage, {

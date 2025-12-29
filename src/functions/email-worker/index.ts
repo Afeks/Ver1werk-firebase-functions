@@ -248,22 +248,54 @@ const drawTicketInfoText = ({
   padding?: number;
 }) => {
   if (!lines.length || !area) {
+    functions.logger.warn('drawTicketInfoText: Keine Lines oder Area', {
+      linesCount: lines.length,
+      hasArea: !!area,
+    });
     return;
   }
 
+  const pageWidth = page.getWidth();
+  const pageHeight = page.getHeight();
   const usableWidth = Math.max(area.width - padding * 2, 0);
   const startX = area.x + padding;
-  const pageHeight = page.getHeight();
   const topY = pageHeight - area.y - padding;
   const bottomLimit = pageHeight - (area.y + area.height) + padding;
   let cursorY = topY - fontSize;
+
+  functions.logger.info('drawTicketInfoText: Starte Zeichnen', {
+    pageWidth,
+    pageHeight,
+    area,
+    linesCount: lines.length,
+    lines,
+    fontSize,
+    padding,
+    usableWidth,
+    startX,
+    topY,
+    bottomLimit,
+    initialCursorY: cursorY,
+  });
 
   for (const line of lines) {
     const wrappedLines = wrapLine(line, font, fontSize, usableWidth);
     for (const segment of wrappedLines) {
       if (cursorY < bottomLimit) {
+        functions.logger.warn('drawTicketInfoText: Text würde unter Bottom-Limit sein', {
+          cursorY,
+          bottomLimit,
+          segment,
+        });
         return;
       }
+      functions.logger.info('drawTicketInfoText: Zeichne Text-Segment', {
+        segment,
+        x: startX,
+        y: cursorY,
+        size: fontSize,
+        withinBounds: startX >= 0 && startX <= pageWidth && cursorY >= bottomLimit && cursorY <= topY,
+      });
       page.drawText(segment, {
         x: startX,
         y: cursorY,
@@ -274,6 +306,11 @@ const drawTicketInfoText = ({
       cursorY -= fontSize + lineSpacing;
     }
   }
+  
+  functions.logger.info('drawTicketInfoText: Fertig', {
+    finalCursorY: cursorY,
+    segmentsDrawn: lines.length,
+  });
 };
 
 // Lädt Ticket-Design-Einstellungen aus dem Ticketing-Modul

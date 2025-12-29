@@ -261,7 +261,66 @@ const drawTicketInfoText = ({
   const startX = area.x + padding;
   const topY = pageHeight - area.y - padding;
   const bottomLimit = pageHeight - (area.y + area.height) + padding;
-  let cursorY = topY - fontSize;
+  const availableHeight = topY - bottomLimit;
+
+  // Passe Schriftgröße iterativ an, bis alles passt
+  let adjustedFontSize = fontSize;
+  let adjustedLineSpacing = lineSpacing;
+  let totalTextSegments = 0;
+  let neededHeight = 0;
+  
+  // Maximal 10 Iterationen, um Endlosschleifen zu vermeiden
+  for (let iteration = 0; iteration < 10; iteration++) {
+    totalTextSegments = 0;
+    for (const line of lines) {
+      const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
+      totalTextSegments += wrappedLines.length;
+    }
+    
+    if (totalTextSegments === 0) break;
+    
+    neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
+    
+    if (neededHeight <= availableHeight * 0.95) {
+      // Genug Platz vorhanden
+      break;
+    }
+    
+    // Reduziere Schriftgröße und Zeilenabstand proportional
+    const scaleFactor = Math.max(0.75, (availableHeight * 0.95) / neededHeight);
+    const newFontSize = Math.max(8, Math.floor(adjustedFontSize * scaleFactor));
+    const newLineSpacing = Math.max(2, Math.floor(adjustedLineSpacing * scaleFactor));
+    
+    // Wenn sich nichts mehr ändert, stoppe
+    if (newFontSize === adjustedFontSize && newLineSpacing === adjustedLineSpacing) {
+      break;
+    }
+    
+    adjustedFontSize = newFontSize;
+    adjustedLineSpacing = newLineSpacing;
+  }
+
+  if (neededHeight > availableHeight) {
+    functions.logger.warn('drawTicketInfoText: Text könnte nicht vollständig dargestellt werden', {
+      neededHeight,
+      availableHeight,
+      adjustedFontSize,
+      adjustedLineSpacing,
+      totalTextSegments,
+    });
+  } else if (adjustedFontSize !== fontSize) {
+    functions.logger.info('drawTicketInfoText: Schriftgröße angepasst', {
+      originalFontSize: fontSize,
+      adjustedFontSize,
+      originalLineSpacing: lineSpacing,
+      adjustedLineSpacing,
+      neededHeight,
+      availableHeight,
+      totalTextSegments,
+    });
+  }
+
+  let cursorY = topY - adjustedFontSize;
 
   functions.logger.info('drawTicketInfoText: Starte Zeichnen', {
     pageWidth,
@@ -269,17 +328,19 @@ const drawTicketInfoText = ({
     area,
     linesCount: lines.length,
     lines,
-    fontSize,
+    fontSize: adjustedFontSize,
     padding,
     usableWidth,
     startX,
     topY,
     bottomLimit,
+    availableHeight,
     initialCursorY: cursorY,
+    totalTextSegments,
   });
 
   for (const line of lines) {
-    const wrappedLines = wrapLine(line, font, fontSize, usableWidth);
+    const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
     for (const segment of wrappedLines) {
       if (cursorY < bottomLimit) {
         functions.logger.warn('drawTicketInfoText: Text würde unter Bottom-Limit sein', {
@@ -293,17 +354,17 @@ const drawTicketInfoText = ({
         segment,
         x: startX,
         y: cursorY,
-        size: fontSize,
+        size: adjustedFontSize,
         withinBounds: startX >= 0 && startX <= pageWidth && cursorY >= bottomLimit && cursorY <= topY,
       });
       page.drawText(segment, {
         x: startX,
         y: cursorY,
-        size: fontSize,
+        size: adjustedFontSize,
         font,
         color: rgb(0, 0, 0),
       });
-      cursorY -= fontSize + lineSpacing;
+      cursorY -= adjustedFontSize + adjustedLineSpacing;
     }
   }
   

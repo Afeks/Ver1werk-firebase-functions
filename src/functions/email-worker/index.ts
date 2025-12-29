@@ -382,7 +382,7 @@ const generateTicketPdf = async ({
   associationName: string;
   ticketName: string;
   eventDate?: string | Date | FirebaseFirestore.Timestamp;
-  seatLabel: string;
+  seatLabel: string | null;
   orderId?: string;
 }): Promise<Buffer> => {
   const doc = await PDFDocument.create();
@@ -469,9 +469,42 @@ const generateTicketPdf = async ({
     pageWidth,
     pageHeight
   );
-  const infoLines = [ticketName || '', formatEventDateText(eventDate), seatLabel || '']
-    .map((line) => line?.trim())
-    .filter((line) => !!line);
+  
+  // Baue Info-Zeilen auf, wobei nur nicht-leere Werte hinzugefügt werden
+  const infoLines: string[] = [];
+  if (ticketName && ticketName.trim()) {
+    infoLines.push(ticketName.trim());
+  }
+  
+  // Event-Datum formatieren
+  const dateText = formatEventDateText(eventDate);
+  functions.logger.info('generateTicketPdf: Date formatting', {
+    eventDate,
+    eventDateType: typeof eventDate,
+    dateText,
+    hasDateText: !!dateText && dateText.trim().length > 0,
+  });
+  if (dateText && dateText.trim()) {
+    infoLines.push(dateText.trim());
+  }
+  
+  // Sitzplatz-Label hinzufügen (nur wenn vorhanden)
+  functions.logger.info('generateTicketPdf: Seat label', {
+    seatLabel,
+    seatLabelType: typeof seatLabel,
+    isNull: seatLabel === null,
+    isUndefined: seatLabel === undefined,
+    hasSeatLabel: !!seatLabel && typeof seatLabel === 'string' && seatLabel.trim().length > 0,
+  });
+  if (seatLabel && typeof seatLabel === 'string' && seatLabel.trim()) {
+    infoLines.push(seatLabel.trim());
+  }
+  
+  functions.logger.info('generateTicketPdf: Final info lines', {
+    infoLinesCount: infoLines.length,
+    infoLines,
+  });
+  
   const hasInfoArea = !!normalizedInfoArea && infoLines.length > 0;
 
   if (hasInfoArea && normalizedInfoArea) {
@@ -521,7 +554,7 @@ const generateTicketPdf = async ({
       }
     }
 
-    if (seatLabel) {
+    if (seatLabel && typeof seatLabel === 'string') {
       page.drawText(`Platz: ${seatLabel}`, {
         x: 50,
         y: yPos,
@@ -594,6 +627,8 @@ const buildTicketAttachments = async (
     seatListType: Array.isArray(seatList) ? 'array' : typeof seatList,
     seatListLength: Array.isArray(seatList) ? seatList.length : 0,
     eventDate,
+    eventDateType: typeof eventDate,
+    eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
     quantity,
     associationName,
   });
@@ -643,16 +678,22 @@ const buildTicketAttachments = async (
     seatArrayLength: seatArray.length,
     templateType: templateAsset?.type || 'none',
     hasQrArea: !!qrArea,
+    eventDate,
+    eventDateType: typeof eventDate,
   });
 
   for (let i = 0; i < ticketCount; i++) {
     const seat = seatArray[i];
-    const seatLabel =
-      seat?.label || seat?.number || seat?.id || `Ticket ${i + 1}`;
+    // Nur Sitzplatz-Label hinzufügen, wenn tatsächlich ein Sitzplatz vorhanden ist
+    // Wenn kein Sitzplan vorhanden ist (seat ist undefined), sollte kein Label angezeigt werden
+    const seatLabel = seat?.label || seat?.number || seat?.id || null;
 
     functions.logger.info(`Generiere PDF für Ticket ${i + 1}`, {
       seatLabel,
       seat,
+      hasSeat: !!seat,
+      eventDate,
+      eventDateType: typeof eventDate,
     });
 
     try {

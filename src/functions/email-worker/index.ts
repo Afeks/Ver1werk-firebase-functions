@@ -929,16 +929,32 @@ const generateTicketPdf = async ({
           areaBottomYFromBottom: pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height),
         });
         
-        for (const line of wrappedLines) {
+        for (let i = 0; i < wrappedLines.length; i++) {
+          const line = wrappedLines[i];
+          functions.logger.info('generateTicketPdf: Prüfe Bestellnummer Zeile', {
+            lineIndex: i,
+            totalLines: wrappedLines.length,
+            line,
+            cursorY,
+            bottomLimit,
+            cursorYAboveBottomLimit: cursorY >= bottomLimit,
+            fontSize,
+            lineSpacing,
+            nextCursorY: cursorY - fontSize - lineSpacing,
+          });
+          
           if (cursorY < bottomLimit) {
             functions.logger.warn('generateTicketPdf: Bestellnummer Text würde außerhalb der Area sein', {
+              lineIndex: i,
+              line,
               cursorY,
               bottomLimit,
-              line,
+              difference: cursorY - bottomLimit,
             });
             break; // Text würde außerhalb der Area sein
           }
           functions.logger.info('generateTicketPdf: Zeichne Bestellnummer Zeile', {
+            lineIndex: i,
             line,
             x: startX,
             y: cursorY,

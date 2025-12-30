@@ -847,31 +847,37 @@ const generateTicketPdf = async ({
   }
 
   // Zeichne Bestellnummer in definierter Area (falls vorhanden)
-  if (orderId && normalizedOrderIdArea) {
-    const orderIdText = `Bestellnummer: ${orderId}`;
-    const padding = 8;
-    const usableWidth = Math.max(normalizedOrderIdArea.width - padding * 2, 0);
-    const startX = normalizedOrderIdArea.x + padding;
-    
-    // Wrappe Text falls nötig
-    const wrappedLines = wrapLine(orderIdText, font, fontSize, usableWidth);
-    let cursorY = pageHeight - normalizedOrderIdArea.y - padding;
-    
-    for (const line of wrappedLines) {
-      cursorY -= fontSize;
-      if (cursorY < pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding) {
-        break; // Text würde außerhalb der Area sein
-      }
-      page.drawText(line, {
-        x: startX,
-        y: cursorY,
-        size: fontSize,
-        font,
-        color: textColor,
-      });
-    }
-  } else if (orderId && infoLines.length === 0) {
-    // Fallback: Nur wenn keine InfoArea vorhanden ist, an alter Position rendern
+  if (orderId) {
+    if (normalizedOrderIdArea) {
+      try {
+        const orderIdText = `Bestellnummer: ${orderId}`;
+        const padding = 8;
+        const usableWidth = Math.max(normalizedOrderIdArea.width - padding * 2, 0);
+        const startX = normalizedOrderIdArea.x + padding;
+        
+        // Wrappe Text falls nötig
+        const wrappedLines = wrapLine(orderIdText, font, fontSize, usableWidth);
+        let cursorY = pageHeight - normalizedOrderIdArea.y - padding;
+        
+        for (const line of wrappedLines) {
+          cursorY -= fontSize;
+          if (cursorY < pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding) {
+            break; // Text würde außerhalb der Area sein
+          }
+          page.drawText(line, {
+            x: startX,
+            y: cursorY,
+            size: fontSize,
+            font,
+            color: textColor,
+          });
+        }
+      } catch (orderIdErr) {
+        functions.logger.warn('Fehler beim Zeichnen der Bestellnummer in Area, verwende Fallback', {
+          error: orderIdErr instanceof Error ? orderIdErr.message : String(orderIdErr),
+        });
+        // Fallback: Zeichne an alter Position
+        if (infoLines.length === 0) {
     page.drawText(`Bestellnummer: ${orderId}`, {
       x: 50,
       y: 36,
@@ -879,6 +885,18 @@ const generateTicketPdf = async ({
       font,
       color: textColor,
     });
+        }
+      }
+    } else if (infoLines.length === 0) {
+      // Fallback: Nur wenn keine InfoArea vorhanden ist, an alter Position rendern
+      page.drawText(`Bestellnummer: ${orderId}`, {
+        x: 50,
+        y: 36,
+        size: fontSize - 2,
+        font,
+        color: textColor,
+      });
+    }
   }
 
   const pdfBytes = await doc.save();

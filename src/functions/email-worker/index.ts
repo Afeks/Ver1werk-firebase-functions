@@ -903,12 +903,19 @@ const generateTicketPdf = async ({
     
     if (normalizedOrderIdArea) {
       try {
+        // Sicherheitsprüfung: Stelle sicher, dass die Koordinaten im gültigen Bereich sind
+        // normalizedOrderIdArea.y ist die Position von OBEN in Pixel (PDF-Koordinaten: Y=0 ist UNTEN)
+        // Also müssen wir es umrechnen: Y von unten = pageHeight - Y von oben
+        const areaYFromTop = Math.max(0, Math.min(normalizedOrderIdArea.y, pageHeight));
+        const areaHeight = Math.max(0, Math.min(normalizedOrderIdArea.height, pageHeight - areaYFromTop));
+        const areaYFromBottom = pageHeight - areaYFromTop;
+        
         const orderIdText = `Bestellnummer: ${orderId}`;
         const padding = 8;
         const usableWidth = Math.max(normalizedOrderIdArea.width - padding * 2, 0);
         const startX = normalizedOrderIdArea.x + padding;
-        const topY = pageHeight - normalizedOrderIdArea.y - padding;
-        const bottomLimit = pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding;
+        const topY = areaYFromBottom - padding;
+        const bottomLimit = areaYFromBottom - areaHeight + padding;
         
         const lineSpacing = 4;
         const availableHeight = topY - bottomLimit;
@@ -948,9 +955,10 @@ const generateTicketPdf = async ({
           wrappedLines,
           fontSize: adjustedFontSize,
           normalizedOrderIdArea,
-          areaTopYFromBottom: pageHeight - normalizedOrderIdArea.y,
-          areaBottomYFromBottom: pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height),
-          areaHeight: normalizedOrderIdArea.height,
+          areaYFromTop,
+          areaHeight,
+          areaYFromBottom,
+          pageHeight,
         });
         
         let cursorY = topY - adjustedFontSize;

@@ -605,10 +605,9 @@ const generateTicketPdf = async ({
   
   const qrBuffer = await generateQRCodeBuffer(qrData, qrImageSize);
   const qrImage = await doc.embedPng(qrBuffer);
-  // Zentriere den QR-Code horizontal und vertikal in der Area
+  // Zentriere QR-Code in der Area
   // normalizedQrArea.y ist die obere Kante von oben (0 = oben)
   // PDF verwendet Y von unten, und drawImage y ist die untere Kante des Bildes
-  // Zentriere den QR-Code in der Area
   // Horizontale Zentrierung
   const qrX = normalizedQrArea.x + (normalizedQrArea.width - qrSize) / 2;
   

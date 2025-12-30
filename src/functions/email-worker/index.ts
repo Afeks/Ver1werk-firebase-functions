@@ -24,6 +24,7 @@ interface TicketContext {
   ticketTemplatePageHeight?: number | null;
   ticketTemplateQrArea?: QrArea | null;
   ticketTemplateInfoArea?: QrArea | null;
+  ticketTemplateOrderIdArea?: QrArea | null;
 }
 
 interface EmailQueueDocument {
@@ -476,6 +477,7 @@ const generateTicketPdf = async ({
   templateAsset,
   qrArea,
   infoArea,
+  orderIdArea,
   associationName,
   ticketName,
   eventDate,
@@ -487,6 +489,7 @@ const generateTicketPdf = async ({
   templateAsset: TemplateAsset | null;
   qrArea: QrArea | null;
   infoArea: QrArea | null;
+  orderIdArea: QrArea | null;
   associationName: string;
   ticketName: string;
   eventDate?: string | Date | FirebaseFirestore.Timestamp;
@@ -683,6 +686,21 @@ const generateTicketPdf = async ({
     height: normalizedInfoAreaTemplate.height * scaleY,
   } : null;
   
+  // Normalisiere OrderIdArea relativ zur Template-Größe, dann skaliere auf PDF-Größe
+  const normalizedOrderIdAreaTemplate = normalizeTemplateArea(
+    orderIdArea,
+    templateWidth,
+    templateHeight
+  );
+  
+  // Ziehe 108px von links und oben ab (PDF-Viewer-Rand im Frontend, wie bei QR-Area)
+  const normalizedOrderIdArea = normalizedOrderIdAreaTemplate ? {
+    x: Math.max(0, normalizedOrderIdAreaTemplate.x - pdfViewerMargin) * scaleX,
+    y: Math.max(0, normalizedOrderIdAreaTemplate.y - pdfViewerMargin) * scaleY,
+    width: normalizedOrderIdAreaTemplate.width * scaleX,
+    height: normalizedOrderIdAreaTemplate.height * scaleY,
+  } : null;
+  
   // Baue Info-Zeilen auf, wobei nur nicht-leere Werte hinzugefügt werden
   const infoLines: string[] = [];
   functions.logger.info('generateTicketPdf: Starte Info-Lines Aufbau', {
@@ -826,7 +844,32 @@ const generateTicketPdf = async ({
     }
   }
 
-  if (orderId && hasInfoArea) {
+  // Zeichne Bestellnummer in definierter Area (falls vorhanden)
+  if (orderId && normalizedOrderIdArea) {
+    const orderIdText = `Bestellnummer: ${orderId}`;
+    const padding = 8;
+    const usableWidth = Math.max(normalizedOrderIdArea.width - padding * 2, 0);
+    const startX = normalizedOrderIdArea.x + padding;
+    
+    // Wrappe Text falls nötig
+    const wrappedLines = wrapLine(orderIdText, font, fontSize, usableWidth);
+    let cursorY = pageHeight - normalizedOrderIdArea.y - padding;
+    
+    for (const line of wrappedLines) {
+      cursorY -= fontSize;
+      if (cursorY < pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding) {
+        break; // Text würde außerhalb der Area sein
+      }
+      page.drawText(line, {
+        x: startX,
+        y: cursorY,
+        size: fontSize,
+        font,
+        color: textColor,
+      });
+    }
+  } else if (orderId && infoLines.length === 0) {
+    // Fallback: Nur wenn keine InfoArea vorhanden ist, an alter Position rendern
     page.drawText(`Bestellnummer: ${orderId}`, {
       x: 50,
       y: 36,
@@ -871,6 +914,7 @@ const buildTicketAttachments = async (
     ticketTemplatePageHeight,
     ticketTemplateQrArea,
     ticketTemplateInfoArea,
+    ticketTemplateOrderIdArea,
   } = emailData.context;
 
   functions.logger.info('buildTicketAttachments: Context-Daten', {
@@ -900,6 +944,7 @@ const buildTicketAttachments = async (
 
   let qrArea = ticketTemplateQrArea || null;
   let infoArea = ticketTemplateInfoArea || null;
+  let orderIdArea = ticketTemplateOrderIdArea || null;
   let templateUrl = ticketTemplatePdfUrl || null;
   let designSettings: TicketDesignSettings | null = null;
 
@@ -966,6 +1011,7 @@ const buildTicketAttachments = async (
         templateAsset,
         qrArea,
         infoArea,
+        orderIdArea: orderIdArea || null,
         associationName: associationName || 'Verein',
         ticketName,
         eventDate,

@@ -553,17 +553,44 @@ const generateTicketPdf = async ({
   });
   // Normalisiere Koordinaten relativ zur Template-Seitengröße (wie im Frontend),
   // dann skaliere auf die tatsächliche PDF-Größe
+  // WICHTIG: Im Frontend hat der PDF-Viewer einen 108px Rand, daher müssen wir die Koordinaten
+  // von Canvas-Größe auf PDF-Inhalt-Größe umrechnen
   const templateWidth = templatePageWidth || pageWidth;
   const templateHeight = templatePageHeight || pageHeight;
+  
+  // PDF-Viewer hat einen 108px Rand auf allen Seiten
+  const pdfViewerMargin = 108;
+  // Canvas-Größe im Frontend (mit PDF-Viewer-Rand)
+  const frontendCanvasWidth = templateWidth + (2 * pdfViewerMargin);
+  const frontendCanvasHeight = templateHeight + (2 * pdfViewerMargin);
+  
+  // Koordinaten vom Frontend sind relativ zum Canvas (mit Rand), müssen aber relativ zum PDF-Inhalt sein
+  // Skaliere Koordinaten von Canvas-Größe auf PDF-Inhalt-Größe
+  const coordinateScaleX = templateWidth / frontendCanvasWidth;
+  const coordinateScaleY = templateHeight / frontendCanvasHeight;
+  
+  // Anpassen der Koordinaten: Frontend-Koordinaten (relativ zum Canvas) → PDF-Inhalt-Koordinaten
+  const adjustedQrArea = qrArea ? {
+    ...qrArea,
+    x: qrArea.x * coordinateScaleX,
+    y: qrArea.y * coordinateScaleY,
+    width: qrArea.width * coordinateScaleX,
+    height: qrArea.height * coordinateScaleY,
+  } : null;
+  
   const scaleX = pageWidth / templateWidth;
   const scaleY = pageHeight / templateHeight;
   
   functions.logger.info('generateTicketPdf: QR-Area vor Normalisierung', {
     qrArea,
+    adjustedQrArea,
     qrAreaX: qrArea?.x,
     qrAreaY: qrArea?.y,
-    qrAreaWidth: qrArea?.width,
-    qrAreaHeight: qrArea?.height,
+    pdfViewerMargin,
+    frontendCanvasWidth,
+    frontendCanvasHeight,
+    coordinateScaleX,
+    coordinateScaleY,
     pageWidth,
     pageHeight,
     templatePageWidth,
@@ -576,9 +603,9 @@ const generateTicketPdf = async ({
     DEFAULT_QR_AREA,
   });
   
-  // Normalisiere relativ zur Template-Größe (wie im Frontend)
+  // Normalisiere relativ zur Template-Größe (nach Anpassung für PDF-Viewer-Rand)
   const normalizedQrAreaTemplate = normalizeQrArea(
-    qrArea || DEFAULT_QR_AREA,
+    adjustedQrArea || DEFAULT_QR_AREA,
     templateWidth,
     templateHeight
   );
@@ -659,9 +686,20 @@ const generateTicketPdf = async ({
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontSize = 12;
   const textColor = rgb(0, 0, 0);
+  
+  // Anpassen der InfoArea-Koordinaten für PDF-Viewer-Rand (wie bei QR-Area)
+  // coordinateScaleX und coordinateScaleY wurden bereits oben berechnet
+  const adjustedInfoArea = infoArea ? {
+    ...infoArea,
+    x: infoArea.x * coordinateScaleX,
+    y: infoArea.y * coordinateScaleY,
+    width: infoArea.width * coordinateScaleX,
+    height: infoArea.height * coordinateScaleY,
+  } : null;
+  
   // Normalisiere InfoArea relativ zur Template-Größe, dann skaliere auf PDF-Größe
   const normalizedInfoAreaTemplate = normalizeTemplateArea(
-    infoArea,
+    adjustedInfoArea,
     templateWidth,
     templateHeight
   );

@@ -934,6 +934,8 @@ const buildTicketAttachments = async (
     hasTicketTemplatePdfUrl: !!ticketTemplatePdfUrl,
     hasTicketTemplateQrArea: !!ticketTemplateQrArea,
     hasTicketTemplateInfoArea: !!ticketTemplateInfoArea,
+    hasTicketTemplateOrderIdArea: !!ticketTemplateOrderIdArea,
+    ticketTemplateOrderIdArea,
   });
 
   if (!orderId || !ticketName) {
@@ -987,6 +989,8 @@ const buildTicketAttachments = async (
     templateType: templateAsset?.type || 'none',
     hasQrArea: !!qrArea,
     hasInfoArea: !!infoArea,
+    hasOrderIdArea: !!orderIdArea,
+    orderIdArea,
     eventDate,
     eventDateType: typeof eventDate,
     eventDateValue: eventDate ? String(eventDate) : 'null/undefined',

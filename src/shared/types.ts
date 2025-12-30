@@ -1,5 +1,5 @@
 /**
- * TypeScript Typen und Interfaces für OrderCat Firebase Functions
+ * TypeScript Typen und Interfaces für Ver1werk Firebase Functions
  */
 
 export enum DistributionMode {

@@ -1,6 +1,6 @@
-# OrderCat Firebase Functions
+# Ver1werk Firebase Functions
 
-Dieses Repository enthält Firebase Functions für die OrderCat-Anwendung, speziell die Funktionalität zur Verteilung von Bestellungen auf Points of Sale.
+Dieses Repository enthält Firebase Functions für die Ver1werk-Anwendung, speziell die Funktionalität zur Verteilung von Bestellungen auf Points of Sale.
 
 ## 🚀 Automatisches Deployment
 
@@ -82,15 +82,15 @@ npm install
 Bevor du die Functions deployen kannst, musst du Firebase initialisieren:
 
 ```bash
-# Im Hauptverzeichnis des Projekts (OrderCat/)
+# Im Hauptverzeichnis des Projekts (Ver1werk/)
 firebase login
-firebase use --add  # Wähle dein Projekt (ordercat)
+firebase use --add  # Wähle dein Projekt (ver1werk)
 ```
 
 Oder direkt mit Projekt-ID:
 
 ```bash
-firebase use ordercat
+firebase use ver1werk
 ```
 
 ## Entwicklung

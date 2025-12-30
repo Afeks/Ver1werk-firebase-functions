@@ -20,6 +20,8 @@ interface TicketContext {
   quantity?: number;
   associationName?: string;
   ticketTemplatePdfUrl?: string;
+  ticketTemplatePageWidth?: number | null;
+  ticketTemplatePageHeight?: number | null;
   ticketTemplateQrArea?: QrArea | null;
   ticketTemplateInfoArea?: QrArea | null;
 }
@@ -479,6 +481,8 @@ const generateTicketPdf = async ({
   eventDate,
   seatLabel,
   orderId,
+  templatePageWidth,
+  templatePageHeight,
 }: {
   templateAsset: TemplateAsset | null;
   qrArea: QrArea | null;
@@ -488,6 +492,8 @@ const generateTicketPdf = async ({
   eventDate?: string | Date | FirebaseFirestore.Timestamp;
   seatLabel: string | null;
   orderId?: string;
+  templatePageWidth?: number | null;
+  templatePageHeight?: number | null;
 }): Promise<Buffer> => {
   const doc = await PDFDocument.create();
   let pageWidth = 595;
@@ -545,7 +551,13 @@ const generateTicketPdf = async ({
         ? eventDate
         : null,
   });
-  // QR-Bereich normalisieren (vor QR-Code-Generierung, damit wir die Größe kennen)
+  // Normalisiere Koordinaten relativ zur Template-Seitengröße (wie im Frontend),
+  // dann skaliere auf die tatsächliche PDF-Größe
+  const templateWidth = templatePageWidth || pageWidth;
+  const templateHeight = templatePageHeight || pageHeight;
+  const scaleX = pageWidth / templateWidth;
+  const scaleY = pageHeight / templateHeight;
+  
   functions.logger.info('generateTicketPdf: QR-Area vor Normalisierung', {
     qrArea,
     qrAreaX: qrArea?.x,
@@ -554,15 +566,30 @@ const generateTicketPdf = async ({
     qrAreaHeight: qrArea?.height,
     pageWidth,
     pageHeight,
+    templatePageWidth,
+    templatePageHeight,
+    templateWidth,
+    templateHeight,
+    scaleX,
+    scaleY,
     usingDefault: !qrArea,
     DEFAULT_QR_AREA,
   });
   
-  const normalizedQrArea = normalizeQrArea(
+  // Normalisiere relativ zur Template-Größe (wie im Frontend)
+  const normalizedQrAreaTemplate = normalizeQrArea(
     qrArea || DEFAULT_QR_AREA,
-    pageWidth,
-    pageHeight
+    templateWidth,
+    templateHeight
   );
+  
+  // Skaliere auf die tatsächliche PDF-Größe
+  const normalizedQrArea = {
+    x: normalizedQrAreaTemplate.x * scaleX,
+    y: normalizedQrAreaTemplate.y * scaleY,
+    width: normalizedQrAreaTemplate.width * scaleX,
+    height: normalizedQrAreaTemplate.height * scaleY,
+  };
 
   functions.logger.info('generateTicketPdf: QR-Area nach Normalisierung', {
     normalizedQrArea,
@@ -624,16 +651,6 @@ const generateTicketPdf = async ({
     },
   });
   
-  // DEBUG: Zeichne einen Rahmen um die Area (zum Testen der Position)
-  page.drawRectangle({
-    x: normalizedQrArea.x,
-    y: pageHeight - normalizedQrArea.y - normalizedQrArea.height,
-    width: normalizedQrArea.width,
-    height: normalizedQrArea.height,
-    borderColor: rgb(1, 0, 0),
-    borderWidth: 2,
-  });
-  
   page.drawImage(qrImage, {
     x: qrX,
     y: qrY,
@@ -645,11 +662,18 @@ const generateTicketPdf = async ({
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontSize = 12;
   const textColor = rgb(0, 0, 0);
-  const normalizedInfoArea = normalizeTemplateArea(
+  // Normalisiere InfoArea relativ zur Template-Größe, dann skaliere auf PDF-Größe
+  const normalizedInfoAreaTemplate = normalizeTemplateArea(
     infoArea,
-    pageWidth,
-    pageHeight
+    templateWidth,
+    templateHeight
   );
+  const normalizedInfoArea = normalizedInfoAreaTemplate ? {
+    x: normalizedInfoAreaTemplate.x * scaleX,
+    y: normalizedInfoAreaTemplate.y * scaleY,
+    width: normalizedInfoAreaTemplate.width * scaleX,
+    height: normalizedInfoAreaTemplate.height * scaleY,
+  } : null;
   
   // Baue Info-Zeilen auf, wobei nur nicht-leere Werte hinzugefügt werden
   const infoLines: string[] = [];
@@ -835,6 +859,8 @@ const buildTicketAttachments = async (
     quantity,
     associationName,
     ticketTemplatePdfUrl,
+    ticketTemplatePageWidth,
+    ticketTemplatePageHeight,
     ticketTemplateQrArea,
     ticketTemplateInfoArea,
   } = emailData.context;
@@ -937,6 +963,8 @@ const buildTicketAttachments = async (
         eventDate,
         seatLabel,
         orderId,
+        templatePageWidth: ticketTemplatePageWidth || null,
+        templatePageHeight: ticketTemplatePageHeight || null,
       });
 
       const fileName = `Ticket_${sanitizeFileSegment(ticketName)}_${sanitizeFileSegment(seatLabel ?? undefined)}.pdf`;

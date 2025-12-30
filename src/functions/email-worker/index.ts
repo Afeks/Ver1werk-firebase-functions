@@ -605,19 +605,17 @@ const generateTicketPdf = async ({
   
   const qrBuffer = await generateQRCodeBuffer(qrData, qrImageSize);
   const qrImage = await doc.embedPng(qrBuffer);
-  // Zentriere QR-Code in der Area
+  // Positioniere QR-Code an der oberen linken Ecke der Area
   // normalizedQrArea.y ist die obere Kante von oben (0 = oben)
   // PDF verwendet Y von unten, und drawImage y ist die untere Kante des Bildes
-  // Horizontale Zentrierung
-  const qrX = normalizedQrArea.x + (normalizedQrArea.width - qrSize) / 2;
+  // Horizontale Position: Linke Kante der Area
+  const qrX = normalizedQrArea.x;
   
-  // Vertikale Zentrierung
+  // Vertikale Position: Obere Kante der Area
   // Area obere Kante (von unten): pageHeight - normalizedQrArea.y
-  // Area untere Kante (von unten): pageHeight - normalizedQrArea.y - normalizedQrArea.height
-  // Area Zentrum (von unten): pageHeight - normalizedQrArea.y - normalizedQrArea.height / 2
-  // QR-Code untere Kante (für drawImage): Zentrum - qrSize / 2
-  const areaCenterYFromBottom = pageHeight - normalizedQrArea.y - normalizedQrArea.height / 2;
-  const qrY = areaCenterYFromBottom - qrSize / 2;
+  // QR-Code untere Kante (für drawImage): Obere Kante - qrSize
+  const areaTopYFromBottom = pageHeight - normalizedQrArea.y;
+  const qrY = areaTopYFromBottom - qrSize;
   
   functions.logger.info('generateTicketPdf: QR-Code Positionierung - Finale Berechnung', {
     qrSize,

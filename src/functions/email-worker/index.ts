@@ -910,11 +910,30 @@ const generateTicketPdf = async ({
         const topY = pageHeight - normalizedOrderIdArea.y - padding;
         const bottomLimit = pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding;
         
-        // Wrappe Text falls nötig
-        const wrappedLines = wrapLine(orderIdText, font, fontSize, usableWidth);
         const lineSpacing = 4;
         const availableHeight = topY - bottomLimit;
-        const neededHeight = wrappedLines.length * fontSize + (wrappedLines.length - 1) * lineSpacing;
+        
+        // Versuche zuerst mit normaler Schriftgröße
+        let adjustedFontSize = fontSize;
+        let wrappedLines = wrapLine(orderIdText, font, adjustedFontSize, usableWidth);
+        let neededHeight = wrappedLines.length * adjustedFontSize + (wrappedLines.length - 1) * lineSpacing;
+        
+        // Wenn nicht genug Platz, reduziere Schriftgröße und wrappe erneut
+        if (neededHeight > availableHeight && wrappedLines.length > 0) {
+          const maxFontSize = Math.floor((availableHeight - (wrappedLines.length - 1) * lineSpacing) / wrappedLines.length);
+          if (maxFontSize >= 8 && maxFontSize < adjustedFontSize) {
+            adjustedFontSize = maxFontSize;
+            wrappedLines = wrapLine(orderIdText, font, adjustedFontSize, usableWidth);
+            neededHeight = wrappedLines.length * adjustedFontSize + (wrappedLines.length - 1) * lineSpacing;
+            functions.logger.info('generateTicketPdf: Schriftgröße für Bestellnummer angepasst', {
+              originalFontSize: fontSize,
+              adjustedFontSize,
+              availableHeight,
+              neededHeight,
+              wrappedLinesCount: wrappedLines.length,
+            });
+          }
+        }
         
         functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
           orderIdText,
@@ -927,27 +946,12 @@ const generateTicketPdf = async ({
           neededHeight,
           wrappedLinesCount: wrappedLines.length,
           wrappedLines,
+          fontSize: adjustedFontSize,
           normalizedOrderIdArea,
           areaTopYFromBottom: pageHeight - normalizedOrderIdArea.y,
           areaBottomYFromBottom: pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height),
           areaHeight: normalizedOrderIdArea.height,
         });
-        
-        // Wenn nicht genug Platz, reduziere Schriftgröße oder zeichne nur sichtbare Zeilen
-        let adjustedFontSize = fontSize;
-        if (neededHeight > availableHeight && wrappedLines.length > 1) {
-          // Versuche Schriftgröße anzupassen
-          const maxFontSize = Math.floor((availableHeight - (wrappedLines.length - 1) * lineSpacing) / wrappedLines.length);
-          if (maxFontSize >= 8) {
-            adjustedFontSize = maxFontSize;
-            functions.logger.info('generateTicketPdf: Schriftgröße für Bestellnummer angepasst', {
-              originalFontSize: fontSize,
-              adjustedFontSize,
-              availableHeight,
-              neededHeight,
-            });
-          }
-        }
         
         let cursorY = topY - adjustedFontSize;
         

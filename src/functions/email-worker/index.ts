@@ -907,16 +907,21 @@ const generateTicketPdf = async ({
         const padding = 8;
         const usableWidth = Math.max(normalizedOrderIdArea.width - padding * 2, 0);
         const startX = normalizedOrderIdArea.x + padding;
+        const topY = pageHeight - normalizedOrderIdArea.y - padding;
+        const bottomLimit = pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding;
         
         // Wrappe Text falls nötig
         const wrappedLines = wrapLine(orderIdText, font, fontSize, usableWidth);
-        let cursorY = pageHeight - normalizedOrderIdArea.y - padding;
+        const lineSpacing = 4;
+        let cursorY = topY - fontSize;
         
         functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
           orderIdText,
           padding,
           usableWidth,
           startX,
+          topY,
+          bottomLimit,
           cursorY,
           wrappedLines,
           normalizedOrderIdArea,
@@ -925,11 +930,11 @@ const generateTicketPdf = async ({
         });
         
         for (const line of wrappedLines) {
-          cursorY -= fontSize;
-          if (cursorY < pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding) {
+          if (cursorY < bottomLimit) {
             functions.logger.warn('generateTicketPdf: Bestellnummer Text würde außerhalb der Area sein', {
               cursorY,
-              bottomLimit: pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + padding,
+              bottomLimit,
+              line,
             });
             break; // Text würde außerhalb der Area sein
           }
@@ -946,6 +951,7 @@ const generateTicketPdf = async ({
             font,
             color: textColor,
           });
+          cursorY -= fontSize + lineSpacing;
         }
       } catch (orderIdErr) {
         functions.logger.warn('Fehler beim Zeichnen der Bestellnummer in Area, verwende Fallback', {

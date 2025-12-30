@@ -64,6 +64,7 @@ interface TicketDesignSettings {
   templateImageUrl?: string | null;
   qrArea?: QrArea | null;
   infoArea?: QrArea | null;
+  orderIdArea?: QrArea | null;
 }
 
 interface QrArea {
@@ -281,7 +282,7 @@ const drawTicketInfoText = ({
   // Maximal 10 Iterationen, um Endlosschleifen zu vermeiden
   for (let iteration = 0; iteration < 10; iteration++) {
     totalTextSegments = 0;
-    for (const line of lines) {
+  for (const line of lines) {
       const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
       totalTextSegments += wrappedLines.length;
     }
@@ -396,7 +397,7 @@ const loadTicketDesignSettings = async (
       .get();
 
     if (!moduleDoc.exists) {
-      return { templatePdfUrl: null, templateImageUrl: null, qrArea: null };
+      return { templatePdfUrl: null, templateImageUrl: null, qrArea: null, infoArea: null, orderIdArea: null };
     }
 
     const data = moduleDoc.data();
@@ -405,13 +406,14 @@ const loadTicketDesignSettings = async (
       templateImageUrl: data?.ticketEmailTemplateImageUrl || null,
       qrArea: data?.ticketEmailQrArea || null,
       infoArea: data?.ticketEmailInfoArea || null,
+      orderIdArea: data?.ticketEmailOrderIdArea || null,
     };
   } catch (err) {
     functions.logger.warn(
       'Fehler beim Laden der Ticket-Design-Einstellungen:',
       err
     );
-    return { templatePdfUrl: null, templateImageUrl: null, qrArea: null };
+    return { templatePdfUrl: null, templateImageUrl: null, qrArea: null, infoArea: null, orderIdArea: null };
   }
 };
 
@@ -961,6 +963,10 @@ const buildTicketAttachments = async (
     }
     if (!infoArea) {
       infoArea = designSettings.infoArea || null;
+    }
+    // orderIdArea ist optional, aber wenn es im Context fehlt und in designSettings vorhanden ist, lade es
+    if (!orderIdArea) {
+      orderIdArea = designSettings.orderIdArea || null;
     }
   }
 

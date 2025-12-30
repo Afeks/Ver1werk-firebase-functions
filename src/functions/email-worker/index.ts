@@ -906,8 +906,14 @@ const generateTicketPdf = async ({
         // Sicherheitsprüfung: Stelle sicher, dass die Koordinaten im gültigen Bereich sind
         // normalizedOrderIdArea.y ist die Position von OBEN in Pixel (PDF-Koordinaten: Y=0 ist UNTEN)
         // Also müssen wir es umrechnen: Y von unten = pageHeight - Y von oben
-        const areaYFromTop = Math.max(0, Math.min(normalizedOrderIdArea.y, pageHeight));
-        const areaHeight = Math.max(0, Math.min(normalizedOrderIdArea.height, pageHeight - areaYFromTop));
+        const minHeight = 20; // Mindesthöhe für die Area
+        let areaYFromTop = Math.max(0, Math.min(normalizedOrderIdArea.y, pageHeight));
+        // Stelle sicher, dass genug Platz für die Mindesthöhe bleibt
+        if (areaYFromTop + minHeight > pageHeight) {
+          areaYFromTop = Math.max(0, pageHeight - minHeight);
+        }
+        const maxPossibleHeight = pageHeight - areaYFromTop;
+        const areaHeight = Math.max(minHeight, Math.min(Math.max(normalizedOrderIdArea.height, minHeight), maxPossibleHeight));
         const areaYFromBottom = pageHeight - areaYFromTop;
         
         const orderIdText = `Bestellnummer: ${orderId}`;

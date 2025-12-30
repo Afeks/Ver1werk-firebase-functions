@@ -724,17 +724,17 @@ const generateTicketPdf = async ({
     pdfViewerMargin,
   });
   
-  // Normalisiere OrderIdArea relativ zur Template-Größe, dann skaliere auf PDF-Größe
+  // Normalisiere OrderIdArea relativ zur Template-Größe
   const normalizedOrderIdAreaTemplate = normalizeTemplateArea(
     adjustedOrderIdArea,
     templateWidth,
     templateHeight
   );
   
-  // Skaliere auf die tatsächliche PDF-Größe
+  // Ziehe 108px von links und oben ab (PDF-Viewer-Rand im Frontend), dann skaliere auf PDF-Größe
   const normalizedOrderIdArea = normalizedOrderIdAreaTemplate ? {
-    x: normalizedOrderIdAreaTemplate.x * scaleX,
-    y: normalizedOrderIdAreaTemplate.y * scaleY,
+    x: Math.max(0, normalizedOrderIdAreaTemplate.x - pdfViewerMargin) * scaleX,
+    y: Math.max(0, normalizedOrderIdAreaTemplate.y - pdfViewerMargin) * scaleY,
     width: normalizedOrderIdAreaTemplate.width * scaleX,
     height: normalizedOrderIdAreaTemplate.height * scaleY,
   } : null;

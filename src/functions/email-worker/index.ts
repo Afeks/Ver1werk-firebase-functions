@@ -1369,13 +1369,31 @@ export const onEmailQueued = functions
     `${ASSOCIATIONS_COLLECTION}/{associationId}/${EMAIL_QUEUE_COLLECTION}/{emailId}`
   )
   .onCreate(async (snap, context) => {
+    const { associationId } = context.params as { associationId: string };
+    const emailData = snap.data() as EmailQueueDocument;
+    
+    functions.logger.info('onEmailQueued: E-Mail in Queue erstellt', {
+      docId: snap.id,
+      associationId,
+      type: emailData.type,
+      to: emailData.to,
+      hasContext: !!emailData.context,
+      contextKeys: emailData.context ? Object.keys(emailData.context) : [],
+      status: emailData.status,
+    });
+    
     try {
-      const { associationId } = context.params as { associationId: string };
       await handleEmailDocument(snap.ref, associationId);
-    } catch (error) {
-      functions.logger.warn('E-Mail konnte nicht sofort verarbeitet werden', {
+      functions.logger.info('onEmailQueued: E-Mail erfolgreich verarbeitet', {
         docId: snap.id,
+        associationId,
+      });
+    } catch (error) {
+      functions.logger.error('onEmailQueued: E-Mail konnte nicht sofort verarbeitet werden', {
+        docId: snap.id,
+        associationId,
         error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
       });
     }
   });

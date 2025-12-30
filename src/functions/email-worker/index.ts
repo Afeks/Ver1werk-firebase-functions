@@ -545,10 +545,7 @@ const generateTicketPdf = async ({
         ? eventDate
         : null,
   });
-  const qrBuffer = await generateQRCodeBuffer(qrData, 200);
-  const qrImage = await doc.embedPng(qrBuffer);
-
-  // QR-Bereich normalisieren
+  // QR-Bereich normalisieren (vor QR-Code-Generierung, damit wir die Größe kennen)
   functions.logger.info('generateTicketPdf: QR-Area vor Normalisierung', {
     qrArea,
     qrAreaX: qrArea?.x,
@@ -573,8 +570,14 @@ const generateTicketPdf = async ({
     pageHeight,
   });
 
-  // QR-Code im definierten Bereich zentriert platzieren
-  const qrSize = Math.min(normalizedQrArea.width, normalizedQrArea.height);
+  // QR-Code Größe: Verwende 90% der Area-Größe, damit Platz für Zentrierung bleibt
+  const qrSizeInArea = Math.min(normalizedQrArea.width, normalizedQrArea.height);
+  const qrSize = qrSizeInArea * 0.9; // 90% der Area-Größe für den QR-Code
+  // Generiere QR-Code mit ausreichender Auflösung (mindestens 200px, maximal 500px)
+  const qrImageSize = Math.min(Math.max(200, Math.ceil(qrSize)), 500);
+  
+  const qrBuffer = await generateQRCodeBuffer(qrData, qrImageSize);
+  const qrImage = await doc.embedPng(qrBuffer);
   // Zentriere den QR-Code horizontal und vertikal in der Area
   // normalizedQrArea.y ist die obere Kante von oben (0 = oben)
   // PDF verwendet Y von unten, und drawImage y ist die untere Kante des Bildes

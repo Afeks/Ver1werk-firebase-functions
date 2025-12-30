@@ -564,9 +564,12 @@ const generateTicketPdf = async ({
   const scaleY = pageHeight / templateHeight;
   
   // PDF-Viewer hat einen 108px Rand auf allen Seiten im Frontend
-  // Die Koordinaten vom Frontend sind relativ zum Canvas (inkl. Rand)
-  // Wir müssen 108px von links und oben abziehen
+  // Die Koordinaten vom Frontend sind relativ zum Canvas MIT Rand
+  // Canvas-Größe = Template-Größe + 2 * 108px
+  // Wir müssen die relativen Koordinaten vom Canvas auf den Template-Inhalt umrechnen
   const pdfViewerMargin = 108;
+  const canvasWidth = templateWidth + (2 * pdfViewerMargin);
+  const canvasHeight = templateHeight + (2 * pdfViewerMargin);
   
   functions.logger.info('generateTicketPdf: QR-Area vor Normalisierung', {
     qrArea,
@@ -578,28 +581,35 @@ const generateTicketPdf = async ({
     templatePageHeight,
     templateWidth,
     templateHeight,
+    canvasWidth,
+    canvasHeight,
+    pdfViewerMargin,
     scaleX,
     scaleY,
-    pdfViewerMargin,
     usingDefault: !qrArea,
     DEFAULT_QR_AREA,
   });
   
-  // Normalisiere relativ zur Template-Größe (wie im Frontend)
+  // Anpassen der relativen Koordinaten: Von Canvas-Koordinaten (mit Rand) zu Template-Koordinaten (ohne Rand)
+  // Die Koordinaten sind 0-1 relativ zum Canvas, wir müssen sie auf Template umrechnen
+  const adjustedQrArea = qrArea ? {
+    x: Math.max(0, Math.min(1, (qrArea.x * canvasWidth - pdfViewerMargin) / templateWidth)),
+    y: Math.max(0, Math.min(1, (qrArea.y * canvasHeight - pdfViewerMargin) / templateHeight)),
+    width: (qrArea.width * canvasWidth) / templateWidth,
+    height: (qrArea.height * canvasHeight) / templateHeight,
+  } : null;
+  
+  // Normalisiere relativ zur Template-Größe (nach Anpassung für PDF-Viewer-Rand)
   const normalizedQrAreaTemplate = normalizeQrArea(
-    qrArea || DEFAULT_QR_AREA,
+    adjustedQrArea || DEFAULT_QR_AREA,
     templateWidth,
     templateHeight
   );
   
-  // Ziehe 108px von links und oben ab (PDF-Viewer-Rand im Frontend)
-  const adjustedX = Math.max(0, normalizedQrAreaTemplate.x - pdfViewerMargin);
-  const adjustedY = Math.max(0, normalizedQrAreaTemplate.y - pdfViewerMargin);
-  
   // Skaliere auf die tatsächliche PDF-Größe
   const normalizedQrArea = {
-    x: adjustedX * scaleX,
-    y: adjustedY * scaleY,
+    x: normalizedQrAreaTemplate.x * scaleX,
+    y: normalizedQrAreaTemplate.y * scaleY,
     width: normalizedQrAreaTemplate.width * scaleX,
     height: normalizedQrAreaTemplate.height * scaleY,
   };
@@ -673,32 +683,48 @@ const generateTicketPdf = async ({
   const fontSize = 12;
   const textColor = rgb(0, 0, 0);
   
+  // Anpassen der relativen Koordinaten: Von Canvas-Koordinaten (mit Rand) zu Template-Koordinaten (ohne Rand)
+  const adjustedInfoArea = infoArea ? {
+    x: Math.max(0, Math.min(1, (infoArea.x * canvasWidth - pdfViewerMargin) / templateWidth)),
+    y: Math.max(0, Math.min(1, (infoArea.y * canvasHeight - pdfViewerMargin) / templateHeight)),
+    width: (infoArea.width * canvasWidth) / templateWidth,
+    height: (infoArea.height * canvasHeight) / templateHeight,
+  } : null;
+  
   // Normalisiere InfoArea relativ zur Template-Größe, dann skaliere auf PDF-Größe
   const normalizedInfoAreaTemplate = normalizeTemplateArea(
-    infoArea,
+    adjustedInfoArea,
     templateWidth,
     templateHeight
   );
   
-  // Ziehe 108px von links und oben ab (PDF-Viewer-Rand im Frontend, wie bei QR-Area)
+  // Skaliere auf die tatsächliche PDF-Größe
   const normalizedInfoArea = normalizedInfoAreaTemplate ? {
-    x: Math.max(0, normalizedInfoAreaTemplate.x - pdfViewerMargin) * scaleX,
-    y: Math.max(0, normalizedInfoAreaTemplate.y - pdfViewerMargin) * scaleY,
+    x: normalizedInfoAreaTemplate.x * scaleX,
+    y: normalizedInfoAreaTemplate.y * scaleY,
     width: normalizedInfoAreaTemplate.width * scaleX,
     height: normalizedInfoAreaTemplate.height * scaleY,
   } : null;
   
+  // Anpassen der relativen Koordinaten: Von Canvas-Koordinaten (mit Rand) zu Template-Koordinaten (ohne Rand)
+  const adjustedOrderIdArea = orderIdArea ? {
+    x: Math.max(0, Math.min(1, (orderIdArea.x * canvasWidth - pdfViewerMargin) / templateWidth)),
+    y: Math.max(0, Math.min(1, (orderIdArea.y * canvasHeight - pdfViewerMargin) / templateHeight)),
+    width: (orderIdArea.width * canvasWidth) / templateWidth,
+    height: (orderIdArea.height * canvasHeight) / templateHeight,
+  } : null;
+  
   // Normalisiere OrderIdArea relativ zur Template-Größe, dann skaliere auf PDF-Größe
   const normalizedOrderIdAreaTemplate = normalizeTemplateArea(
-    orderIdArea,
+    adjustedOrderIdArea,
     templateWidth,
     templateHeight
   );
   
-  // Ziehe 108px von links und oben ab (PDF-Viewer-Rand im Frontend, wie bei QR-Area)
+  // Skaliere auf die tatsächliche PDF-Größe
   const normalizedOrderIdArea = normalizedOrderIdAreaTemplate ? {
-    x: Math.max(0, normalizedOrderIdAreaTemplate.x - pdfViewerMargin) * scaleX,
-    y: Math.max(0, normalizedOrderIdAreaTemplate.y - pdfViewerMargin) * scaleY,
+    x: normalizedOrderIdAreaTemplate.x * scaleX,
+    y: normalizedOrderIdAreaTemplate.y * scaleY,
     width: normalizedOrderIdAreaTemplate.width * scaleX,
     height: normalizedOrderIdAreaTemplate.height * scaleY,
   } : null;
@@ -1369,7 +1395,7 @@ export const onEmailQueued = functions
     `${ASSOCIATIONS_COLLECTION}/{associationId}/${EMAIL_QUEUE_COLLECTION}/{emailId}`
   )
   .onCreate(async (snap, context) => {
-    const { associationId } = context.params as { associationId: string };
+      const { associationId } = context.params as { associationId: string };
     const emailData = snap.data() as EmailQueueDocument;
     
     functions.logger.info('onEmailQueued: E-Mail in Queue erstellt', {

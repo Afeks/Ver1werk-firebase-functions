@@ -1,7 +1,7 @@
 {
-  "name": "ordercat-firebase-functions",
+  "name": "ver1werk-firebase-functions",
   "version": "1.0.0",
-  "description": "Firebase Functions für OrderCat - Order Distribution Service",
+  "description": "Firebase Functions für Ver1werk - Order Distribution Service",
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",

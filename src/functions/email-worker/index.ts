@@ -731,10 +731,10 @@ const generateTicketPdf = async ({
     templateHeight
   );
   
-  // Ziehe 108px von links und oben ab (PDF-Viewer-Rand im Frontend), dann skaliere auf PDF-Größe
+  // Skaliere auf die tatsächliche PDF-Größe (108px-Anpassung ist bereits in adjustedOrderIdArea enthalten)
   const normalizedOrderIdArea = normalizedOrderIdAreaTemplate ? {
-    x: Math.max(0, normalizedOrderIdAreaTemplate.x - pdfViewerMargin) * scaleX,
-    y: Math.max(0, normalizedOrderIdAreaTemplate.y - pdfViewerMargin) * scaleY,
+    x: normalizedOrderIdAreaTemplate.x * scaleX,
+    y: normalizedOrderIdAreaTemplate.y * scaleY,
     width: normalizedOrderIdAreaTemplate.width * scaleX,
     height: normalizedOrderIdAreaTemplate.height * scaleY,
   } : null;
@@ -903,43 +903,38 @@ const generateTicketPdf = async ({
     
     if (normalizedOrderIdArea) {
       try {
+        // Bestellnummer-Box: Feste Größe, relativ kleine Schrift
+        const orderIdFontSize = 10; // Kleinere Schriftgröße für Bestellnummer
+        const orderIdPadding = 4; // Kleinerer Padding
+        const orderIdLineSpacing = 2;
+        
         // Sicherheitsprüfung: Stelle sicher, dass die Koordinaten im gültigen Bereich sind
         // normalizedOrderIdArea.y ist die Position von OBEN in Pixel (PDF-Koordinaten: Y=0 ist UNTEN)
         // Also müssen wir es umrechnen: Y von unten = pageHeight - Y von oben
-        const minHeight = 20; // Mindesthöhe für die Area
-        let areaYFromTop = Math.max(0, Math.min(normalizedOrderIdArea.y, pageHeight));
-        // Stelle sicher, dass genug Platz für die Mindesthöhe bleibt
-        if (areaYFromTop + minHeight > pageHeight) {
-          areaYFromTop = Math.max(0, pageHeight - minHeight);
-        }
-        const maxPossibleHeight = pageHeight - areaYFromTop;
-        const areaHeight = Math.max(minHeight, Math.min(Math.max(normalizedOrderIdArea.height, minHeight), maxPossibleHeight));
+        const areaYFromTop = Math.max(0, Math.min(normalizedOrderIdArea.y, pageHeight));
         const areaYFromBottom = pageHeight - areaYFromTop;
         
         const orderIdText = `Bestellnummer: ${orderId}`;
-        const padding = 8;
-        const usableWidth = Math.max(normalizedOrderIdArea.width - padding * 2, 0);
-        const startX = normalizedOrderIdArea.x + padding;
-        const topY = areaYFromBottom - padding;
-        const bottomLimit = areaYFromBottom - areaHeight + padding;
-        
-        const lineSpacing = 4;
+        const usableWidth = Math.max(normalizedOrderIdArea.width - orderIdPadding * 2, 0);
+        const startX = normalizedOrderIdArea.x + orderIdPadding;
+        const topY = areaYFromBottom - orderIdPadding;
+        const bottomLimit = areaYFromBottom - normalizedOrderIdArea.height + orderIdPadding;
         const availableHeight = topY - bottomLimit;
         
-        // Versuche zuerst mit normaler Schriftgröße
-        let adjustedFontSize = fontSize;
-        let wrappedLines = wrapLine(orderIdText, font, adjustedFontSize, usableWidth);
-        let neededHeight = wrappedLines.length * adjustedFontSize + (wrappedLines.length - 1) * lineSpacing;
+        // Wrappe Text mit kleinerer Schriftgröße
+        let wrappedLines = wrapLine(orderIdText, font, orderIdFontSize, usableWidth);
+        let neededHeight = wrappedLines.length * orderIdFontSize + (wrappedLines.length - 1) * orderIdLineSpacing;
         
-        // Wenn nicht genug Platz, reduziere Schriftgröße und wrappe erneut
-        if (neededHeight > availableHeight && wrappedLines.length > 0) {
-          const maxFontSize = Math.floor((availableHeight - (wrappedLines.length - 1) * lineSpacing) / wrappedLines.length);
+        // Wenn nicht genug Platz, reduziere Schriftgröße weiter
+        let adjustedFontSize = orderIdFontSize;
+        if (neededHeight > availableHeight && wrappedLines.length > 0 && availableHeight > 0) {
+          const maxFontSize = Math.floor((availableHeight - (wrappedLines.length - 1) * orderIdLineSpacing) / wrappedLines.length);
           if (maxFontSize >= 8 && maxFontSize < adjustedFontSize) {
             adjustedFontSize = maxFontSize;
             wrappedLines = wrapLine(orderIdText, font, adjustedFontSize, usableWidth);
-            neededHeight = wrappedLines.length * adjustedFontSize + (wrappedLines.length - 1) * lineSpacing;
+            neededHeight = wrappedLines.length * adjustedFontSize + (wrappedLines.length - 1) * orderIdLineSpacing;
             functions.logger.info('generateTicketPdf: Schriftgröße für Bestellnummer angepasst', {
-              originalFontSize: fontSize,
+              originalFontSize: orderIdFontSize,
               adjustedFontSize,
               availableHeight,
               neededHeight,
@@ -950,7 +945,7 @@ const generateTicketPdf = async ({
         
         functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
           orderIdText,
-          padding,
+          padding: orderIdPadding,
           usableWidth,
           startX,
           topY,
@@ -962,7 +957,7 @@ const generateTicketPdf = async ({
           fontSize: adjustedFontSize,
           normalizedOrderIdArea,
           areaYFromTop,
-          areaHeight,
+          areaHeight: normalizedOrderIdArea.height,
           areaYFromBottom,
           pageHeight,
         });
@@ -979,8 +974,8 @@ const generateTicketPdf = async ({
             bottomLimit,
             cursorYAboveBottomLimit: cursorY >= bottomLimit,
             fontSize: adjustedFontSize,
-            lineSpacing,
-            nextCursorY: cursorY - adjustedFontSize - lineSpacing,
+            lineSpacing: orderIdLineSpacing,
+            nextCursorY: cursorY - adjustedFontSize - orderIdLineSpacing,
           });
           
           if (cursorY < bottomLimit) {
@@ -1007,7 +1002,7 @@ const generateTicketPdf = async ({
             font,
             color: textColor,
           });
-          cursorY -= adjustedFontSize + lineSpacing;
+          cursorY -= adjustedFontSize + orderIdLineSpacing;
         }
       } catch (orderIdErr) {
         functions.logger.warn('Fehler beim Zeichnen der Bestellnummer in Area, verwende Fallback', {

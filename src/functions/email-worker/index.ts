@@ -648,16 +648,6 @@ const generateTicketPdf = async ({
     },
   });
   
-  // DEBUG: Zeichne einen roten Rahmen um die Area
-  page.drawRectangle({
-    x: normalizedQrArea.x,
-    y: pageHeight - normalizedQrArea.y - normalizedQrArea.height,
-    width: normalizedQrArea.width,
-    height: normalizedQrArea.height,
-    borderColor: rgb(1, 0, 0),
-    borderWidth: 2,
-  });
-  
   page.drawImage(qrImage, {
     x: qrX,
     y: qrY,

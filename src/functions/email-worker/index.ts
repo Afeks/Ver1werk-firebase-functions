@@ -913,7 +913,8 @@ const generateTicketPdf = async ({
         // Wrappe Text falls nötig
         const wrappedLines = wrapLine(orderIdText, font, fontSize, usableWidth);
         const lineSpacing = 4;
-        let cursorY = topY - fontSize;
+        const availableHeight = topY - bottomLimit;
+        const neededHeight = wrappedLines.length * fontSize + (wrappedLines.length - 1) * lineSpacing;
         
         functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
           orderIdText,
@@ -922,12 +923,33 @@ const generateTicketPdf = async ({
           startX,
           topY,
           bottomLimit,
-          cursorY,
+          availableHeight,
+          neededHeight,
+          wrappedLinesCount: wrappedLines.length,
           wrappedLines,
           normalizedOrderIdArea,
           areaTopYFromBottom: pageHeight - normalizedOrderIdArea.y,
           areaBottomYFromBottom: pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height),
+          areaHeight: normalizedOrderIdArea.height,
         });
+        
+        // Wenn nicht genug Platz, reduziere Schriftgröße oder zeichne nur sichtbare Zeilen
+        let adjustedFontSize = fontSize;
+        if (neededHeight > availableHeight && wrappedLines.length > 1) {
+          // Versuche Schriftgröße anzupassen
+          const maxFontSize = Math.floor((availableHeight - (wrappedLines.length - 1) * lineSpacing) / wrappedLines.length);
+          if (maxFontSize >= 8) {
+            adjustedFontSize = maxFontSize;
+            functions.logger.info('generateTicketPdf: Schriftgröße für Bestellnummer angepasst', {
+              originalFontSize: fontSize,
+              adjustedFontSize,
+              availableHeight,
+              neededHeight,
+            });
+          }
+        }
+        
+        let cursorY = topY - adjustedFontSize;
         
         for (let i = 0; i < wrappedLines.length; i++) {
           const line = wrappedLines[i];
@@ -938,9 +960,9 @@ const generateTicketPdf = async ({
             cursorY,
             bottomLimit,
             cursorYAboveBottomLimit: cursorY >= bottomLimit,
-            fontSize,
+            fontSize: adjustedFontSize,
             lineSpacing,
-            nextCursorY: cursorY - fontSize - lineSpacing,
+            nextCursorY: cursorY - adjustedFontSize - lineSpacing,
           });
           
           if (cursorY < bottomLimit) {
@@ -958,16 +980,16 @@ const generateTicketPdf = async ({
             line,
             x: startX,
             y: cursorY,
-            size: fontSize,
+            size: adjustedFontSize,
           });
           page.drawText(line, {
             x: startX,
             y: cursorY,
-            size: fontSize,
+            size: adjustedFontSize,
             font,
             color: textColor,
           });
-          cursorY -= fontSize + lineSpacing;
+          cursorY -= adjustedFontSize + lineSpacing;
         }
       } catch (orderIdErr) {
         functions.logger.warn('Fehler beim Zeichnen der Bestellnummer in Area, verwende Fallback', {

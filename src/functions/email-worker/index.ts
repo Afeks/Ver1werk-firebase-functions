@@ -122,25 +122,31 @@ const normalizeTemplateArea = (
 };
 
 // Normalisiert QR-Bereich-Koordinaten (0-1 zu Pixel)
+// Wichtig: QR-Areas sind immer quadratisch (aspect-ratio: 1/1 im Frontend)
+// Wir verwenden die Breite für beide Dimensionen, um Verzerrung zu vermeiden
 const normalizeQrArea = (
   qrArea: QrArea | null | undefined,
   pageWidth: number,
   pageHeight: number
 ): QrArea => {
-  const normalized = normalizeTemplateArea(
-    qrArea,
-    pageWidth,
-    pageHeight,
-    DEFAULT_QR_AREA
-  );
-  return (
-    normalized || {
-      x: DEFAULT_QR_AREA.x * pageWidth,
-      y: DEFAULT_QR_AREA.y * pageHeight,
-      width: DEFAULT_QR_AREA.width * pageWidth,
-      height: DEFAULT_QR_AREA.height * pageHeight,
-    }
-  );
+  const source = qrArea || DEFAULT_QR_AREA;
+  const x = clamp(source.x ?? 0, 0, 1);
+  const y = clamp(source.y ?? 0, 0, 1);
+  // Verwende width für beide Dimensionen, da QR-Areas quadratisch sind
+  const size = clamp(source.width ?? 0.25, 0.02, 1);
+  
+  // Für X und width: verwende pageWidth (horizontale Skalierung)
+  // Für Y: verwende pageHeight (vertikale Skalierung)
+  // Für height: verwende die gleiche Pixel-Größe wie width (quadratisch)
+  const normalizedWidth = size * pageWidth;
+  const normalizedHeight = normalizedWidth; // Quadratisch: height = width
+  
+  return {
+    x: x * pageWidth,
+    y: y * pageHeight,
+    width: normalizedWidth,
+    height: normalizedHeight,
+  };
 };
 
 const toValidDate = (
@@ -543,11 +549,29 @@ const generateTicketPdf = async ({
   const qrImage = await doc.embedPng(qrBuffer);
 
   // QR-Bereich normalisieren
+  functions.logger.info('generateTicketPdf: QR-Area vor Normalisierung', {
+    qrArea,
+    qrAreaX: qrArea?.x,
+    qrAreaY: qrArea?.y,
+    qrAreaWidth: qrArea?.width,
+    qrAreaHeight: qrArea?.height,
+    pageWidth,
+    pageHeight,
+    usingDefault: !qrArea,
+    DEFAULT_QR_AREA,
+  });
+  
   const normalizedQrArea = normalizeQrArea(
     qrArea || DEFAULT_QR_AREA,
     pageWidth,
     pageHeight
   );
+
+  functions.logger.info('generateTicketPdf: QR-Area nach Normalisierung', {
+    normalizedQrArea,
+    pageWidth,
+    pageHeight,
+  });
 
   // QR-Code im definierten Bereich zentriert platzieren
   const qrSize = Math.min(normalizedQrArea.width, normalizedQrArea.height);
@@ -561,21 +585,35 @@ const generateTicketPdf = async ({
   // QR-Code untere Kante (für drawImage): Zentrum - qrSize / 2
   const qrY = pageHeight - normalizedQrArea.y - normalizedQrArea.height / 2 - qrSize / 2;
   
-  functions.logger.info('generateTicketPdf: QR-Code Positionierung', {
-    qrArea: qrArea || 'DEFAULT',
-    normalizedQrArea,
+  functions.logger.info('generateTicketPdf: QR-Code Positionierung - Finale Berechnung', {
     qrSize,
     qrX,
     qrY,
-    pageWidth,
-    pageHeight,
-    qrAreaX: normalizedQrArea.x,
-    qrAreaY: normalizedQrArea.y,
-    qrAreaWidth: normalizedQrArea.width,
-    qrAreaHeight: normalizedQrArea.height,
-    areaTopFromBottom: pageHeight - normalizedQrArea.y,
-    areaBottomFromBottom: pageHeight - normalizedQrArea.y - normalizedQrArea.height,
-    areaCenterFromBottom: pageHeight - normalizedQrArea.y - normalizedQrArea.height / 2,
+    calculation: {
+      normalizedX: normalizedQrArea.x,
+      normalizedY: normalizedQrArea.y,
+      normalizedWidth: normalizedQrArea.width,
+      normalizedHeight: normalizedQrArea.height,
+      centerX: normalizedQrArea.x + normalizedQrArea.width / 2,
+      centerYFromTop: normalizedQrArea.y + normalizedQrArea.height / 2,
+      centerYFromBottom: pageHeight - (normalizedQrArea.y + normalizedQrArea.height / 2),
+    },
+    areaBounds: {
+      left: normalizedQrArea.x,
+      right: normalizedQrArea.x + normalizedQrArea.width,
+      topFromTop: normalizedQrArea.y,
+      bottomFromTop: normalizedQrArea.y + normalizedQrArea.height,
+      topFromBottom: pageHeight - normalizedQrArea.y,
+      bottomFromBottom: pageHeight - normalizedQrArea.y - normalizedQrArea.height,
+    },
+    qrBounds: {
+      left: qrX,
+      right: qrX + qrSize,
+      bottomFromBottom: qrY,
+      topFromBottom: qrY + qrSize,
+      centerX: qrX + qrSize / 2,
+      centerYFromBottom: qrY + qrSize / 2,
+    },
   });
   
   page.drawImage(qrImage, {

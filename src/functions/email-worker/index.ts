@@ -904,76 +904,28 @@ const generateTicketPdf = async ({
     if (normalizedOrderIdArea) {
       try {
         // Bestellnummer-Box: Genau wie im Editor (font-size: 0.5rem, padding: 0.2rem 0.3rem)
-        // 0.5rem = 0.5 * 16px = 8px
-        // Im PDF: 1pt = 1/72 inch, 1px (bei 96dpi) ≈ 0.75pt
-        // 0.5rem = 8px ≈ 6pt
-        const orderIdFontSize = 6; // Entspricht 0.5rem im Editor
-        // Padding: 0.2rem oben/unten = 3.2px ≈ 2.4pt, 0.3rem links/rechts = 4.8px ≈ 3.6pt
-        // Runden wir auf 2.5pt und 3.5pt für bessere Darstellung
-        const orderIdPaddingX = 3.5; // Padding links/rechts (entspricht 0.3rem)
-        const orderIdPaddingY = 2.5; // Padding oben/unten (entspricht 0.2rem)
+        // 0.5rem = 0.5 * 16px = 8px ≈ 6pt
+        const orderIdFontSize = 6;
+        // Padding: 0.2rem oben/unten = 2.5pt, 0.3rem links/rechts = 3.5pt
+        const orderIdPaddingX = 3.5;
+        const orderIdPaddingY = 2.5;
         
-        // normalizedOrderIdArea.y ist die obere Kante der Box, gemessen von OBEN in Pixel
-        // Im PDF: Y=0 ist UNTEN, Y=pageHeight ist OBEN
-        // drawText verwendet die Basislinie des Textes als Y-Koordinate
-        // Für Helvetica ist der Ascender etwa 0.73 der Font-Size
-        // Wenn die obere Kante des Textes bei topY sein soll, muss die Basislinie bei topY - fontSize * ascenderRatio sein
-        const ascenderRatio = 0.73; // Helvetica Ascender-Verhältnis
         const orderIdText = `Bestellnummer: ${orderId}`;
         
-        // Berechne Text-Breite für korrekte X-Positionierung
-        const textWidth = font.widthOfTextAtSize(orderIdText, orderIdFontSize);
+        // X-Position: Obere linke Ecke der Box + Padding (wie im Editor)
+        const textX = normalizedOrderIdArea.x + orderIdPaddingX;
         
-        // X-Position: Linksbündig innerhalb der Box (wie im Editor)
-        const startX = normalizedOrderIdArea.x + orderIdPaddingX;
+        // Y-Position: Obere linke Ecke der Box + Padding
+        // normalizedOrderIdArea.y ist die obere Kante der Box, gemessen von OBEN
+        // Im PDF: Y=0 ist UNTEN, also ist die obere Kante bei pageHeight - normalizedOrderIdArea.y
+        // Die obere Kante des Textes soll bei pageHeight - normalizedOrderIdArea.y - paddingY sein
+        // drawText verwendet die Basislinie: Diese ist etwa 0.73 * fontSize unter der oberen Kante (Helvetica Ascender)
+        const topEdgeY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY;
+        const textY = topEdgeY - (orderIdFontSize * 0.73);
         
-        // Y-Position: Obere Kante der Box (von unten gemessen, mit Padding)
-        const topY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY;
-        // Die obere Kante des Textes soll bei topY sein
-        // Basislinie ist ascenderRatio * fontSize unter der oberen Kante
-        let textY = topY - (orderIdFontSize * ascenderRatio);
-        
-        // Untere Kante der Box (von unten gemessen, mit Padding)
-        const bottomLimit = pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + orderIdPaddingY;
-        
-        // Wenn textY unter bottomLimit liegt, positioniere Text am unteren Rand der Box
-        // Am unteren Rand: Die Basislinie sollte etwa fontSize * (1 - ascenderRatio) über dem unteren Rand sein
-        if (textY < bottomLimit) {
-          // Für unteren Rand: Descender ist etwa 0.27 der Font-Size
-          // Wir wollen, dass die untere Kante des Textes bei bottomLimit ist
-          // Basislinie ist etwa fontSize * 0.27 über der unteren Kante
-          textY = bottomLimit + (orderIdFontSize * 0.27);
-          functions.logger.warn('generateTicketPdf: textY würde unter bottomLimit liegen, korrigiere Position', {
-            originalTextY: topY - (orderIdFontSize * ascenderRatio),
-            correctedTextY: textY,
-            bottomLimit,
-            normalizedOrderIdAreaY: normalizedOrderIdArea.y,
-            normalizedOrderIdAreaHeight: normalizedOrderIdArea.height,
-            pageHeight,
-          });
-        }
-        
-        functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
-          orderIdText,
-          paddingX: orderIdPaddingX,
-          paddingY: orderIdPaddingY,
-          startX,
-          textY,
-          textWidth,
-          fontSize: orderIdFontSize,
-          ascenderRatio,
-          normalizedOrderIdArea,
-          areaYFromTop: normalizedOrderIdArea.y,
-          areaHeight: normalizedOrderIdArea.height,
-          areaYFromBottom: pageHeight - normalizedOrderIdArea.y,
-          pageHeight,
-          topY,
-          bottomLimit,
-        });
-        
-        // Zeichne einzeiligen Text (genau wie im Editor)
+        // Zeichne einzeiligen Text (obere linke Ecke wie im Editor)
         page.drawText(orderIdText, {
-          x: startX,
+          x: textX,
           y: textY,
           size: orderIdFontSize,
           font,

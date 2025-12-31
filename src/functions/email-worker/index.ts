@@ -913,20 +913,33 @@ const generateTicketPdf = async ({
         const orderIdPaddingX = 3.5; // Padding links/rechts (entspricht 0.3rem)
         const orderIdPaddingY = 2.5; // Padding oben/unten (entspricht 0.2rem)
         
-        // normalizedOrderIdArea.y ist die Y-Position von OBEN in Pixel
-        // Im PDF ist Y=0 UNTEN, also müssen wir umrechnen: Y_von_unten = pageHeight - Y_von_oben
-        // Aber: normalizedOrderIdArea.y wurde bereits durch normalizeTemplateArea berechnet,
-        // die y * pageHeight zurückgibt, wobei y relativ ist (0 = oben, 1 = unten)
-        // Also: normalizedOrderIdArea.y = 0 bedeutet ganz oben, normalizedOrderIdArea.y = pageHeight bedeutet ganz unten
+        // normalizedOrderIdArea.y wurde durch normalizeTemplateArea berechnet:
+        // y = clamp(source.y ?? 0, 0, 1) * pageHeight
+        // Also: y=0 (relativ) → normalizedOrderIdArea.y = 0 (Pixel von oben)
+        //       y=1 (relativ) → normalizedOrderIdArea.y = pageHeight (Pixel von oben)
+        // Im PDF ist Y=0 UNTEN, also müssen wir umrechnen
         
         const orderIdText = `Bestellnummer: ${orderId}`;
         const startX = normalizedOrderIdArea.x + orderIdPaddingX;
         
-        // Y-Koordinate: normalizedOrderIdArea.y ist von OBEN, PDF Y ist von UNTEN
-        // Wenn y=0 (oben), dann PDF-Y = pageHeight (ganz oben im PDF)
-        // Text-Y = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY - orderIdFontSize
-        // Das positioniert den Text oben links mit Padding
-        const textY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY - orderIdFontSize;
+        // Y-Koordinate: normalizedOrderIdArea.y ist Pixel-Abstand von OBEN
+        // Im PDF: Y=0 ist UNTEN, Y=pageHeight ist OBEN
+        // Text soll oben in der Box sein (innerhalb der Box, mit Padding von oben)
+        // Berechnung: pageHeight - normalizedOrderIdArea.y - orderIdPaddingY - orderIdFontSize
+        // Wenn normalizedOrderIdArea.y = 0 (oben), dann textY = pageHeight - 0 - padding - fontSize (nahe oben)
+        // Wenn normalizedOrderIdArea.y = pageHeight (unten), dann textY = pageHeight - pageHeight - padding - fontSize (negativ!)
+        let textY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY - orderIdFontSize;
+        
+        // Sicherheitsprüfung: Wenn textY negativ wird, liegt die Box zu weit unten
+        // In diesem Fall positioniere den Text oben auf der Seite
+        if (textY < 0) {
+          functions.logger.warn('generateTicketPdf: textY ist negativ, positioniere Text oben', {
+            originalTextY: textY,
+            normalizedOrderIdAreaY: normalizedOrderIdArea.y,
+            pageHeight,
+          });
+          textY = pageHeight - orderIdPaddingY - orderIdFontSize;
+        }
         
         functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
           orderIdText,

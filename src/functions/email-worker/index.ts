@@ -707,12 +707,13 @@ const generateTicketPdf = async ({
       areaLineSpacing: pdfInfoArea.lineSpacing,
       linesCount: infoLines.length,
     });
+    // Die Schriftgröße wird aus pdfInfoArea.fontSize gelesen, nicht aus dem fontSize-Parameter
     drawTicketInfoText({
       page,
       area: pdfInfoArea as QrArea, // PdfArea hat die gleiche Struktur wie QrArea
       lines: infoLines,
       font,
-      fontSize,
+      // fontSize wird ignoriert, da area.fontSize vorhanden ist
     });
   } else if (infoLines.length > 0) {
     functions.logger.info('generateTicketPdf: Keine InfoArea definiert, verwende Fallback-Position', {

@@ -917,11 +917,31 @@ const generateTicketPdf = async ({
         // Im PDF: Y=0 ist UNTEN, Y=pageHeight ist OBEN
         // Text soll oben in der Box sein (mit Padding von oben)
         // Die obere Kante der Box (von unten): pageHeight - normalizedOrderIdArea.y
-        // Text-Y Position (von unten): obere Kante - Padding - FontSize
+        // Text-Y Position (von unten): obere Kante - Padding - FontSize (drawText y ist Basislinie)
+        // Ähnlich wie drawTicketInfoText: topY = pageHeight - area.y - padding, cursorY = topY - fontSize
         const orderIdText = `Bestellnummer: ${orderId}`;
         const startX = normalizedOrderIdArea.x + orderIdPaddingX;
-        const areaTopYFromBottom = pageHeight - normalizedOrderIdArea.y;
-        const textY = areaTopYFromBottom - orderIdPaddingY - orderIdFontSize;
+        
+        // Genau wie drawTicketInfoText: topY = pageHeight - area.y - padding
+        const topY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY;
+        const bottomLimit = pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + orderIdPaddingY;
+        
+        // Text-Y: topY - fontSize (drawText y ist die Basislinie)
+        // Stelle sicher, dass textY >= bottomLimit, damit Text innerhalb der Box bleibt
+        let textY = topY - orderIdFontSize;
+        
+        // Wenn textY unter bottomLimit liegt, positioniere Text am unteren Rand der Box
+        if (textY < bottomLimit) {
+          textY = bottomLimit + orderIdFontSize; // Positioniere Text am unteren Rand mit Abstand
+          functions.logger.warn('generateTicketPdf: textY würde unter bottomLimit liegen, korrigiere Position', {
+            originalTextY: topY - orderIdFontSize,
+            correctedTextY: textY,
+            bottomLimit,
+            normalizedOrderIdAreaY: normalizedOrderIdArea.y,
+            normalizedOrderIdAreaHeight: normalizedOrderIdArea.height,
+            pageHeight,
+          });
+        }
         
         functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
           orderIdText,

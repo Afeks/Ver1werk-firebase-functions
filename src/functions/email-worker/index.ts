@@ -915,26 +915,36 @@ const generateTicketPdf = async ({
         
         // normalizedOrderIdArea.y ist die obere Kante der Box, gemessen von OBEN in Pixel
         // Im PDF: Y=0 ist UNTEN, Y=pageHeight ist OBEN
-        // Text soll oben in der Box sein (mit Padding von oben)
-        // Die obere Kante der Box (von unten): pageHeight - normalizedOrderIdArea.y
-        // Text-Y Position (von unten): obere Kante - Padding - FontSize (drawText y ist Basislinie)
-        // Ähnlich wie drawTicketInfoText: topY = pageHeight - area.y - padding, cursorY = topY - fontSize
+        // drawText verwendet die Basislinie des Textes als Y-Koordinate
+        // Für Helvetica ist der Ascender etwa 0.73 der Font-Size
+        // Wenn die obere Kante des Textes bei topY sein soll, muss die Basislinie bei topY - fontSize * ascenderRatio sein
+        const ascenderRatio = 0.73; // Helvetica Ascender-Verhältnis
         const orderIdText = `Bestellnummer: ${orderId}`;
+        
+        // Berechne Text-Breite für korrekte X-Positionierung
+        const textWidth = font.widthOfTextAtSize(orderIdText, orderIdFontSize);
+        
+        // X-Position: Linksbündig innerhalb der Box (wie im Editor)
         const startX = normalizedOrderIdArea.x + orderIdPaddingX;
         
-        // Genau wie drawTicketInfoText: topY = pageHeight - area.y - padding
+        // Y-Position: Obere Kante der Box (von unten gemessen, mit Padding)
         const topY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY;
+        // Die obere Kante des Textes soll bei topY sein
+        // Basislinie ist ascenderRatio * fontSize unter der oberen Kante
+        let textY = topY - (orderIdFontSize * ascenderRatio);
+        
+        // Untere Kante der Box (von unten gemessen, mit Padding)
         const bottomLimit = pageHeight - (normalizedOrderIdArea.y + normalizedOrderIdArea.height) + orderIdPaddingY;
         
-        // Text-Y: topY - fontSize (drawText y ist die Basislinie)
-        // Stelle sicher, dass textY >= bottomLimit, damit Text innerhalb der Box bleibt
-        let textY = topY - orderIdFontSize;
-        
         // Wenn textY unter bottomLimit liegt, positioniere Text am unteren Rand der Box
+        // Am unteren Rand: Die Basislinie sollte etwa fontSize * (1 - ascenderRatio) über dem unteren Rand sein
         if (textY < bottomLimit) {
-          textY = bottomLimit + orderIdFontSize; // Positioniere Text am unteren Rand mit Abstand
+          // Für unteren Rand: Descender ist etwa 0.27 der Font-Size
+          // Wir wollen, dass die untere Kante des Textes bei bottomLimit ist
+          // Basislinie ist etwa fontSize * 0.27 über der unteren Kante
+          textY = bottomLimit + (orderIdFontSize * 0.27);
           functions.logger.warn('generateTicketPdf: textY würde unter bottomLimit liegen, korrigiere Position', {
-            originalTextY: topY - orderIdFontSize,
+            originalTextY: topY - (orderIdFontSize * ascenderRatio),
             correctedTextY: textY,
             bottomLimit,
             normalizedOrderIdAreaY: normalizedOrderIdArea.y,
@@ -949,12 +959,16 @@ const generateTicketPdf = async ({
           paddingY: orderIdPaddingY,
           startX,
           textY,
+          textWidth,
           fontSize: orderIdFontSize,
+          ascenderRatio,
           normalizedOrderIdArea,
           areaYFromTop: normalizedOrderIdArea.y,
           areaHeight: normalizedOrderIdArea.height,
           areaYFromBottom: pageHeight - normalizedOrderIdArea.y,
           pageHeight,
+          topY,
+          bottomLimit,
         });
         
         // Zeichne einzeiligen Text (genau wie im Editor)

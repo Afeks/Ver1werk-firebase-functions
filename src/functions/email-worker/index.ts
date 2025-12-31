@@ -100,7 +100,7 @@ const getAssociationIdFromDocRef = (
 ): string | undefined => docRef.parent?.parent?.id;
 
 
-// Einfache Koordinaten-Umrechnung: Frontend (0-1 relativ zum Canvas mit 108px Rand) -> PDF (Pixel, y von oben)
+// Einfache Koordinaten-Umrechnung: Frontend (0-1 relativ zum Bild) -> PDF (Pixel, y von oben)
 // Die Funktion konvertiert die relativen Koordinaten direkt in PDF-Koordinaten
 // y wird von oben gemessen (wie im Frontend), nicht von unten (wie PDF es normalerweise macht)
 interface PdfArea {
@@ -121,34 +121,13 @@ const convertFrontendToPdfArea = (
     return null;
   }
 
-  // PDF-Viewer hat einen 108px Rand auf allen Seiten im Frontend
-  // Frontend-Koordinaten sind 0-1 relativ zum Canvas (Template + 2*108px Rand)
-  const pdfViewerMargin = 108;
-  const canvasWidth = templateWidth + (2 * pdfViewerMargin);
-  const canvasHeight = templateHeight + (2 * pdfViewerMargin);
-
-  // Konvertiere relative Koordinaten (0-1) zu Canvas-Pixeln
-  const canvasX = frontendArea.x * canvasWidth;
-  const canvasY = frontendArea.y * canvasHeight;
-
-  // Entferne den PDF-Viewer-Rand (108px auf jeder Seite) für Position
-  const templateX = canvasX - pdfViewerMargin;
-  const templateY = canvasY - pdfViewerMargin;
-
-  // Für Breite/Höhe: Relative Größe (0-1) wird direkt auf Template-Größe skaliert
-  // Dann auf PDF-Größe skalieren
-  const templateWidthArea = frontendArea.width * templateWidth;
-  const templateHeightArea = frontendArea.height * templateHeight;
-
-  // Skaliere auf PDF-Größe
-  const scaleX = pdfWidth / templateWidth;
-  const scaleY = pdfHeight / templateHeight;
-
+  // Frontend-Koordinaten sind 0-1 relativ zum Bild (PNG füllt Canvas, beginnt bei 0,0)
+  // Einfach direkt auf PDF-Größe skalieren
   return {
-    x: Math.max(0, templateX * scaleX),
-    y: Math.max(0, templateY * scaleY),
-    width: templateWidthArea * scaleX,
-    height: templateHeightArea * scaleY,
+    x: frontendArea.x * pdfWidth,
+    y: frontendArea.y * pdfHeight,
+    width: frontendArea.width * pdfWidth,
+    height: frontendArea.height * pdfHeight,
   };
 };
 

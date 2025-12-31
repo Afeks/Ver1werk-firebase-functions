@@ -903,107 +903,53 @@ const generateTicketPdf = async ({
     
     if (normalizedOrderIdArea) {
       try {
-        // Bestellnummer-Box: Feste Größe, relativ kleine Schrift
-        const orderIdFontSize = 10; // Kleinere Schriftgröße für Bestellnummer
-        const orderIdPadding = 4; // Kleinerer Padding
-        const orderIdLineSpacing = 2;
+        // Bestellnummer-Box: Genau wie im Editor (font-size: 0.5rem, padding: 0.2rem 0.3rem)
+        // 0.5rem = 0.5 * 16px = 8px
+        // Im PDF: 1pt = 1/72 inch, 1px (bei 96dpi) ≈ 0.75pt
+        // 0.5rem = 8px ≈ 6pt
+        const orderIdFontSize = 6; // Entspricht 0.5rem im Editor
+        // Padding: 0.2rem oben/unten = 3.2px ≈ 2.4pt, 0.3rem links/rechts = 4.8px ≈ 3.6pt
+        // Runden wir auf 2.5pt und 3.5pt für bessere Darstellung
+        const orderIdPaddingX = 3.5; // Padding links/rechts (entspricht 0.3rem)
+        const orderIdPaddingY = 2.5; // Padding oben/unten (entspricht 0.2rem)
         
-        // Sicherheitsprüfung: Stelle sicher, dass die Koordinaten im gültigen Bereich sind
-        // normalizedOrderIdArea.y ist die Position von OBEN in Pixel (PDF-Koordinaten: Y=0 ist UNTEN)
-        // Also müssen wir es umrechnen: Y von unten = pageHeight - Y von oben
-        const areaYFromTop = Math.max(0, Math.min(normalizedOrderIdArea.y, pageHeight));
-        const areaYFromBottom = pageHeight - areaYFromTop;
+        // normalizedOrderIdArea.y ist die Y-Position von OBEN in Pixel
+        // Im PDF ist Y=0 UNTEN, also müssen wir umrechnen: Y_von_unten = pageHeight - Y_von_oben
+        // Aber: normalizedOrderIdArea.y wurde bereits durch normalizeTemplateArea berechnet,
+        // die y * pageHeight zurückgibt, wobei y relativ ist (0 = oben, 1 = unten)
+        // Also: normalizedOrderIdArea.y = 0 bedeutet ganz oben, normalizedOrderIdArea.y = pageHeight bedeutet ganz unten
         
         const orderIdText = `Bestellnummer: ${orderId}`;
-        const usableWidth = Math.max(normalizedOrderIdArea.width - orderIdPadding * 2, 0);
-        const startX = normalizedOrderIdArea.x + orderIdPadding;
-        const topY = areaYFromBottom - orderIdPadding;
-        const bottomLimit = areaYFromBottom - normalizedOrderIdArea.height + orderIdPadding;
-        const availableHeight = topY - bottomLimit;
+        const startX = normalizedOrderIdArea.x + orderIdPaddingX;
         
-        // Wrappe Text mit kleinerer Schriftgröße
-        let wrappedLines = wrapLine(orderIdText, font, orderIdFontSize, usableWidth);
-        let neededHeight = wrappedLines.length * orderIdFontSize + (wrappedLines.length - 1) * orderIdLineSpacing;
-        
-        // Wenn nicht genug Platz, reduziere Schriftgröße weiter
-        let adjustedFontSize = orderIdFontSize;
-        if (neededHeight > availableHeight && wrappedLines.length > 0 && availableHeight > 0) {
-          const maxFontSize = Math.floor((availableHeight - (wrappedLines.length - 1) * orderIdLineSpacing) / wrappedLines.length);
-          if (maxFontSize >= 8 && maxFontSize < adjustedFontSize) {
-            adjustedFontSize = maxFontSize;
-            wrappedLines = wrapLine(orderIdText, font, adjustedFontSize, usableWidth);
-            neededHeight = wrappedLines.length * adjustedFontSize + (wrappedLines.length - 1) * orderIdLineSpacing;
-            functions.logger.info('generateTicketPdf: Schriftgröße für Bestellnummer angepasst', {
-              originalFontSize: orderIdFontSize,
-              adjustedFontSize,
-              availableHeight,
-              neededHeight,
-              wrappedLinesCount: wrappedLines.length,
-            });
-          }
-        }
+        // Y-Koordinate: normalizedOrderIdArea.y ist von OBEN, PDF Y ist von UNTEN
+        // Wenn y=0 (oben), dann PDF-Y = pageHeight (ganz oben im PDF)
+        // Text-Y = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY - orderIdFontSize
+        // Das positioniert den Text oben links mit Padding
+        const textY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY - orderIdFontSize;
         
         functions.logger.info('generateTicketPdf: Bestellnummer Zeichnen', {
           orderIdText,
-          padding: orderIdPadding,
-          usableWidth,
+          paddingX: orderIdPaddingX,
+          paddingY: orderIdPaddingY,
           startX,
-          topY,
-          bottomLimit,
-          availableHeight,
-          neededHeight,
-          wrappedLinesCount: wrappedLines.length,
-          wrappedLines,
-          fontSize: adjustedFontSize,
+          textY,
+          fontSize: orderIdFontSize,
           normalizedOrderIdArea,
-          areaYFromTop,
+          areaYFromTop: normalizedOrderIdArea.y,
           areaHeight: normalizedOrderIdArea.height,
-          areaYFromBottom,
+          areaYFromBottom: pageHeight - normalizedOrderIdArea.y,
           pageHeight,
         });
         
-        let cursorY = topY - adjustedFontSize;
-        
-        for (let i = 0; i < wrappedLines.length; i++) {
-          const line = wrappedLines[i];
-          functions.logger.info('generateTicketPdf: Prüfe Bestellnummer Zeile', {
-            lineIndex: i,
-            totalLines: wrappedLines.length,
-            line,
-            cursorY,
-            bottomLimit,
-            cursorYAboveBottomLimit: cursorY >= bottomLimit,
-            fontSize: adjustedFontSize,
-            lineSpacing: orderIdLineSpacing,
-            nextCursorY: cursorY - adjustedFontSize - orderIdLineSpacing,
-          });
-          
-          if (cursorY < bottomLimit) {
-            functions.logger.warn('generateTicketPdf: Bestellnummer Text würde außerhalb der Area sein', {
-              lineIndex: i,
-              line,
-              cursorY,
-              bottomLimit,
-              difference: cursorY - bottomLimit,
-            });
-            break; // Text würde außerhalb der Area sein
-          }
-          functions.logger.info('generateTicketPdf: Zeichne Bestellnummer Zeile', {
-            lineIndex: i,
-            line,
-            x: startX,
-            y: cursorY,
-            size: adjustedFontSize,
-          });
-          page.drawText(line, {
-            x: startX,
-            y: cursorY,
-            size: adjustedFontSize,
-            font,
-            color: textColor,
-          });
-          cursorY -= adjustedFontSize + orderIdLineSpacing;
-        }
+        // Zeichne einzeiligen Text (genau wie im Editor)
+        page.drawText(orderIdText, {
+          x: startX,
+          y: textY,
+          size: orderIdFontSize,
+          font,
+          color: textColor,
+        });
       } catch (orderIdErr) {
         functions.logger.warn('Fehler beim Zeichnen der Bestellnummer in Area, verwende Fallback', {
           error: orderIdErr instanceof Error ? orderIdErr.message : String(orderIdErr),

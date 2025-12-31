@@ -274,33 +274,29 @@ const drawTicketInfoText = ({
   const bottomLimit = pageHeight - (area.y + area.height);
   const availableHeight = topY - bottomLimit;
 
-  // Wenn Schriftgröße vom Frontend kommt, verwende sie direkt (keine Anpassung nötig)
-  // Sonst: Passe Schriftgröße iterativ an, bis alles passt
+  // Wenn Schriftgröße vom Frontend kommt, prüfe ob Text in Box passt
+  // Wenn nicht, reduziere Schriftgröße, damit alles passt
   let adjustedFontSize = fontSize;
   let adjustedLineSpacing = lineSpacing;
   
-  // Nur anpassen, wenn keine explizite Schriftgröße vom Frontend kommt
-  if (!area.fontSize) {
-    let totalTextSegments = 0;
-    let neededHeight = 0;
+  // Berechne benötigte Höhe für Text
+  let totalTextSegments = 0;
+  for (const line of lines) {
+    const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
+    totalTextSegments += wrappedLines.length;
+  }
+  let neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
+  
+  // Wenn Text nicht in Box passt, reduziere Schriftgröße iterativ
+  if (neededHeight > availableHeight) {
+    functions.logger.info('drawTicketInfoText: Text passt nicht in Box, reduziere Schriftgröße', {
+      neededHeight,
+      availableHeight,
+      originalFontSize: fontSize,
+    });
     
     // Maximal 10 Iterationen, um Endlosschleifen zu vermeiden
     for (let iteration = 0; iteration < 10; iteration++) {
-      totalTextSegments = 0;
-  for (const line of lines) {
-        const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
-        totalTextSegments += wrappedLines.length;
-      }
-      
-      if (totalTextSegments === 0) break;
-      
-      neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
-      
-      if (neededHeight <= availableHeight * 0.95) {
-        // Genug Platz vorhanden
-        break;
-      }
-      
       // Reduziere Schriftgröße und Zeilenabstand proportional
       const scaleFactor = Math.max(0.75, (availableHeight * 0.95) / neededHeight);
       const newFontSize = Math.max(8, Math.floor(adjustedFontSize * scaleFactor));
@@ -313,22 +309,29 @@ const drawTicketInfoText = ({
       
       adjustedFontSize = newFontSize;
       adjustedLineSpacing = newLineSpacing;
+      
+      // Berechne benötigte Höhe mit neuer Schriftgröße
+      totalTextSegments = 0;
+      for (const line of lines) {
+        const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
+        totalTextSegments += wrappedLines.length;
+      }
+      neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
+      
+      if (neededHeight <= availableHeight * 0.95) {
+        // Genug Platz vorhanden
+        break;
+      }
     }
-  } else {
-    // Schriftgröße vom Frontend wird direkt verwendet, keine Anpassung
+  } else if (area.fontSize) {
+    // Schriftgröße vom Frontend wird verwendet und passt in Box
     functions.logger.info('drawTicketInfoText: Verwende Schriftgröße vom Frontend', {
       fontSize: area.fontSize,
       lineSpacing: area.lineSpacing,
+      neededHeight,
+      availableHeight,
     });
   }
-  
-  // Berechne neededHeight für Logging (auch wenn keine Anpassung nötig war)
-  let totalTextSegments = 0;
-  for (const line of lines) {
-    const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
-    totalTextSegments += wrappedLines.length;
-  }
-  const neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
 
   if (neededHeight > availableHeight) {
     functions.logger.warn('drawTicketInfoText: Text könnte nicht vollständig dargestellt werden', {
@@ -338,8 +341,8 @@ const drawTicketInfoText = ({
       adjustedLineSpacing,
       totalTextSegments,
     });
-  } else if (!area.fontSize && adjustedFontSize !== fontSize) {
-    // Nur loggen wenn Schriftgröße automatisch angepasst wurde (nicht vom Frontend)
+  } else if (adjustedFontSize !== fontSize) {
+    // Schriftgröße wurde automatisch angepasst
     functions.logger.info('drawTicketInfoText: Schriftgröße automatisch angepasst', {
       originalFontSize: fontSize,
       adjustedFontSize,

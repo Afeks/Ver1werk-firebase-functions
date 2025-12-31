@@ -134,20 +134,14 @@ const convertFrontendToPdfArea = (
     height: frontendArea.height * pdfHeight,
   };
   
-  // Skaliere fontSize und lineSpacing von Frontend-Canvas-Größe auf PDF-Größe
-  // Frontend-Schriftgröße ist in Browser-Pixeln (basierend auf Canvas-Größe)
-  // PDF-Schriftgröße sollte relativ zur PDF-Größe sein
-  // Da templateWidth/Height die tatsächliche Bildgröße ist und pdfWidth/Height die PDF-Größe,
-  // skaliere die Schriftgröße proportional
-  if (frontendArea.fontSize !== undefined && templateWidth > 0) {
-    // Skaliere von Frontend-Canvas-Pixeln zu PDF-Pixeln
-    // Annahme: Frontend-Schriftgröße bezieht sich auf templateWidth (Bildbreite)
-    const scaleX = pdfWidth / templateWidth;
-    result.fontSize = frontendArea.fontSize * scaleX;
+  // Die Schriftgröße vom Frontend ist bereits in PDF-Punkten (skaliert von Browser-Pixeln zu PDF-Punkten)
+  // Die Skalierung erfolgt im Frontend: fontSize * (templateWidth / 720)
+  // Daher muss hier NICHT nochmal skaliert werden, sondern direkt verwendet werden
+  if (frontendArea.fontSize !== undefined) {
+    result.fontSize = frontendArea.fontSize;
   }
-  if (frontendArea.lineSpacing !== undefined && templateWidth > 0) {
-    const scaleX = pdfWidth / templateWidth;
-    result.lineSpacing = frontendArea.lineSpacing * scaleX;
+  if (frontendArea.lineSpacing !== undefined) {
+    result.lineSpacing = frontendArea.lineSpacing;
   }
   
   return result;
@@ -272,10 +266,12 @@ const drawTicketInfoText = ({
 
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
-  const usableWidth = Math.max(area.width - padding * 2, 0);
-  const startX = area.x + padding;
-  const topY = pageHeight - area.y - padding;
-  const bottomLimit = pageHeight - (area.y + area.height) + padding;
+  // Die Box-Größe vom Frontend enthält bereits Padding und Border
+  // Daher verwenden wir die volle Breite/Höhe ohne zusätzliches Padding
+  const usableWidth = area.width;
+  const startX = area.x;
+  const topY = pageHeight - area.y;
+  const bottomLimit = pageHeight - (area.y + area.height);
   const availableHeight = topY - bottomLimit;
 
   // Wenn Schriftgröße vom Frontend kommt, verwende sie direkt (keine Anpassung nötig)

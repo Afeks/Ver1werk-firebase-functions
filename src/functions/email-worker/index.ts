@@ -266,8 +266,8 @@ const drawTicketInfoText = ({
 
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
-  // Die Box-Größe vom Frontend enthält bereits Padding und Border
-  // Daher verwenden wir die volle Breite/Höhe ohne zusätzliches Padding
+  // Die Box-Größe vom Frontend enthält bereits Text + Padding + Border
+  // Daher verwenden wir die volle Breite/Höhe für den Text
   const usableWidth = area.width;
   const startX = area.x;
   const topY = pageHeight - area.y;

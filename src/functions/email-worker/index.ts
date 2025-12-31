@@ -130,12 +130,15 @@ const convertFrontendToPdfArea = (
   // Konvertiere relative Koordinaten (0-1) zu Canvas-Pixeln
   const canvasX = frontendArea.x * canvasWidth;
   const canvasY = frontendArea.y * canvasHeight;
-  const canvasWidthArea = frontendArea.width * canvasWidth;
-  const canvasHeightArea = frontendArea.height * canvasHeight;
 
-  // Entferne den PDF-Viewer-Rand (108px auf jeder Seite)
+  // Entferne den PDF-Viewer-Rand (108px auf jeder Seite) für Position
   const templateX = canvasX - pdfViewerMargin;
   const templateY = canvasY - pdfViewerMargin;
+
+  // Für Breite/Höhe: Relative Größe (0-1) wird direkt auf Template-Größe skaliert
+  // Dann auf PDF-Größe skalieren
+  const templateWidthArea = frontendArea.width * templateWidth;
+  const templateHeightArea = frontendArea.height * templateHeight;
 
   // Skaliere auf PDF-Größe
   const scaleX = pdfWidth / templateWidth;
@@ -144,8 +147,8 @@ const convertFrontendToPdfArea = (
   return {
     x: Math.max(0, templateX * scaleX),
     y: Math.max(0, templateY * scaleY),
-    width: canvasWidthArea * scaleX,
-    height: canvasHeightArea * scaleY,
+    width: templateWidthArea * scaleX,
+    height: templateHeightArea * scaleY,
   };
 };
 

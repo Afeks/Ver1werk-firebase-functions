@@ -72,6 +72,8 @@ interface QrArea {
   y: number;
   width: number;
   height: number;
+  fontSize?: number; // Optionale Schriftgröße in Pixeln (für InfoArea)
+  lineSpacing?: number; // Optionaler Zeilenabstand in Pixeln (für InfoArea)
 }
 
 const DEFAULT_QR_AREA: QrArea = {
@@ -223,8 +225,8 @@ const drawTicketInfoText = ({
   area,
   lines,
   font,
-  fontSize = 12,
-  lineSpacing = 4,
+  fontSize: providedFontSize,
+  lineSpacing: providedLineSpacing,
   padding = 8,
 }: {
   page: PDFPage;
@@ -243,6 +245,11 @@ const drawTicketInfoText = ({
     return;
   }
 
+  // Verwende Schriftgröße aus area, falls vorhanden (vom Frontend berechnet)
+  // Sonst verwende providedFontSize oder Default
+  const fontSize = area.fontSize || providedFontSize || 12;
+  const lineSpacing = area.lineSpacing || providedLineSpacing || 4;
+
   const pageWidth = page.getWidth();
   const pageHeight = page.getHeight();
   const usableWidth = Math.max(area.width - padding * 2, 0);
@@ -251,42 +258,61 @@ const drawTicketInfoText = ({
   const bottomLimit = pageHeight - (area.y + area.height) + padding;
   const availableHeight = topY - bottomLimit;
 
-  // Passe Schriftgröße iterativ an, bis alles passt
+  // Wenn Schriftgröße vom Frontend kommt, verwende sie direkt (keine Anpassung nötig)
+  // Sonst: Passe Schriftgröße iterativ an, bis alles passt
   let adjustedFontSize = fontSize;
   let adjustedLineSpacing = lineSpacing;
-  let totalTextSegments = 0;
-  let neededHeight = 0;
   
-  // Maximal 10 Iterationen, um Endlosschleifen zu vermeiden
-  for (let iteration = 0; iteration < 10; iteration++) {
-    totalTextSegments = 0;
+  // Nur anpassen, wenn keine explizite Schriftgröße vom Frontend kommt
+  if (!area.fontSize) {
+    let totalTextSegments = 0;
+    let neededHeight = 0;
+    
+    // Maximal 10 Iterationen, um Endlosschleifen zu vermeiden
+    for (let iteration = 0; iteration < 10; iteration++) {
+      totalTextSegments = 0;
   for (const line of lines) {
-      const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
-      totalTextSegments += wrappedLines.length;
+        const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
+        totalTextSegments += wrappedLines.length;
+      }
+      
+      if (totalTextSegments === 0) break;
+      
+      neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
+      
+      if (neededHeight <= availableHeight * 0.95) {
+        // Genug Platz vorhanden
+        break;
+      }
+      
+      // Reduziere Schriftgröße und Zeilenabstand proportional
+      const scaleFactor = Math.max(0.75, (availableHeight * 0.95) / neededHeight);
+      const newFontSize = Math.max(8, Math.floor(adjustedFontSize * scaleFactor));
+      const newLineSpacing = Math.max(2, Math.floor(adjustedLineSpacing * scaleFactor));
+      
+      // Wenn sich nichts mehr ändert, stoppe
+      if (newFontSize === adjustedFontSize && newLineSpacing === adjustedLineSpacing) {
+        break;
+      }
+      
+      adjustedFontSize = newFontSize;
+      adjustedLineSpacing = newLineSpacing;
     }
-    
-    if (totalTextSegments === 0) break;
-    
-    neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
-    
-    if (neededHeight <= availableHeight * 0.95) {
-      // Genug Platz vorhanden
-      break;
-    }
-    
-    // Reduziere Schriftgröße und Zeilenabstand proportional
-    const scaleFactor = Math.max(0.75, (availableHeight * 0.95) / neededHeight);
-    const newFontSize = Math.max(8, Math.floor(adjustedFontSize * scaleFactor));
-    const newLineSpacing = Math.max(2, Math.floor(adjustedLineSpacing * scaleFactor));
-    
-    // Wenn sich nichts mehr ändert, stoppe
-    if (newFontSize === adjustedFontSize && newLineSpacing === adjustedLineSpacing) {
-      break;
-    }
-    
-    adjustedFontSize = newFontSize;
-    adjustedLineSpacing = newLineSpacing;
+  } else {
+    // Schriftgröße vom Frontend wird direkt verwendet, keine Anpassung
+    functions.logger.info('drawTicketInfoText: Verwende Schriftgröße vom Frontend', {
+      fontSize: area.fontSize,
+      lineSpacing: area.lineSpacing,
+    });
   }
+  
+  // Berechne neededHeight für Logging (auch wenn keine Anpassung nötig war)
+  let totalTextSegments = 0;
+  for (const line of lines) {
+    const wrappedLines = wrapLine(line, font, adjustedFontSize, usableWidth);
+    totalTextSegments += wrappedLines.length;
+  }
+  const neededHeight = totalTextSegments * adjustedFontSize + (totalTextSegments - 1) * adjustedLineSpacing;
 
   if (neededHeight > availableHeight) {
     functions.logger.warn('drawTicketInfoText: Text könnte nicht vollständig dargestellt werden', {
@@ -296,8 +322,9 @@ const drawTicketInfoText = ({
       adjustedLineSpacing,
       totalTextSegments,
     });
-  } else if (adjustedFontSize !== fontSize) {
-    functions.logger.info('drawTicketInfoText: Schriftgröße angepasst', {
+  } else if (!area.fontSize && adjustedFontSize !== fontSize) {
+    // Nur loggen wenn Schriftgröße automatisch angepasst wurde (nicht vom Frontend)
+    functions.logger.info('drawTicketInfoText: Schriftgröße automatisch angepasst', {
       originalFontSize: fontSize,
       adjustedFontSize,
       originalLineSpacing: lineSpacing,
@@ -522,7 +549,7 @@ const generateTicketPdf = async ({
   // Template-Größe
   const templateWidth = templatePageWidth || pageWidth;
   const templateHeight = templatePageHeight || pageHeight;
-  
+
   // Konvertiere Frontend-Koordinaten zu PDF-Koordinaten (einfach und direkt)
   const pdfQrArea = convertFrontendToPdfArea(
     qrArea || DEFAULT_QR_AREA,
@@ -756,13 +783,13 @@ const generateTicketPdf = async ({
       });
       // Fallback: Nur wenn keine InfoArea vorhanden ist, an alter Position rendern
       if (infoLines.length === 0) {
-        page.drawText(`Bestellnummer: ${orderId}`, {
-          x: 50,
-          y: 36,
-          size: fontSize - 2,
-          font,
-          color: textColor,
-        });
+    page.drawText(`Bestellnummer: ${orderId}`, {
+      x: 50,
+      y: 36,
+      size: fontSize - 2,
+      font,
+      color: textColor,
+    });
       }
     }
   } else {

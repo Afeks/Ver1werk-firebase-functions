@@ -606,6 +606,12 @@ const generateTicketPdf = async ({
   const textColor = rgb(0, 0, 0);
   
   // Konvertiere Frontend-Koordinaten zu PDF-Koordinaten (einfach und direkt)
+  functions.logger.info('generateTicketPdf: InfoArea vor Konvertierung', {
+    infoArea,
+    hasFontSize: !!infoArea?.fontSize,
+    fontSize: infoArea?.fontSize,
+    lineSpacing: infoArea?.lineSpacing,
+  });
   const pdfInfoArea = convertFrontendToPdfArea(
     infoArea,
     templateWidth,
@@ -613,6 +619,12 @@ const generateTicketPdf = async ({
     pageWidth,
     pageHeight
   );
+  functions.logger.info('generateTicketPdf: InfoArea nach Konvertierung', {
+    pdfInfoArea,
+    hasFontSize: !!pdfInfoArea?.fontSize,
+    fontSize: pdfInfoArea?.fontSize,
+    lineSpacing: pdfInfoArea?.lineSpacing,
+  });
   
   const pdfOrderIdArea = convertFrontendToPdfArea(
     orderIdArea,
@@ -691,6 +703,8 @@ const generateTicketPdf = async ({
   if (hasInfoArea && pdfInfoArea) {
     functions.logger.info('generateTicketPdf: Zeichne Info-Lines in InfoArea', {
       area: pdfInfoArea,
+      areaFontSize: pdfInfoArea.fontSize,
+      areaLineSpacing: pdfInfoArea.lineSpacing,
       linesCount: infoLines.length,
     });
     drawTicketInfoText({

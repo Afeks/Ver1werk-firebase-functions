@@ -99,57 +99,53 @@ const getAssociationIdFromDocRef = (
   docRef: FirebaseFirestore.DocumentReference
 ): string | undefined => docRef.parent?.parent?.id;
 
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(Math.max(value, min), max);
 
-// Normalisiert allgemeine Bereichs-Koordinaten (0-1 zu Pixel)
-const normalizeTemplateArea = (
-  area: QrArea | null | undefined,
-  pageWidth: number,
-  pageHeight: number,
-  fallback?: QrArea
-): QrArea | null => {
-  const source = area ?? fallback;
-  if (!source) {
+// Einfache Koordinaten-Umrechnung: Frontend (0-1 relativ zum Canvas mit 108px Rand) -> PDF (Pixel, y von oben)
+// Die Funktion konvertiert die relativen Koordinaten direkt in PDF-Koordinaten
+// y wird von oben gemessen (wie im Frontend), nicht von unten (wie PDF es normalerweise macht)
+interface PdfArea {
+  x: number; // Von links in Pixeln
+  y: number; // Von oben in Pixeln (nicht von unten!)
+  width: number; // Breite in Pixeln
+  height: number; // Höhe in Pixeln
+}
+
+const convertFrontendToPdfArea = (
+  frontendArea: QrArea | null | undefined,
+  templateWidth: number,
+  templateHeight: number,
+  pdfWidth: number,
+  pdfHeight: number
+): PdfArea | null => {
+  if (!frontendArea) {
     return null;
   }
-  const x = clamp(source.x ?? 0, 0, 1);
-  const y = clamp(source.y ?? 0, 0, 1);
-  const width = clamp(source.width ?? 0.25, 0.02, 1);
-  const height = clamp(source.height ?? 0.25, 0.02, 1);
-  return {
-    x: x * pageWidth,
-    y: y * pageHeight,
-    width: width * pageWidth,
-    height: height * pageHeight,
-  };
-};
 
-// Normalisiert QR-Bereich-Koordinaten (0-1 zu Pixel)
-// Wichtig: QR-Areas sind immer quadratisch (aspect-ratio: 1/1 im Frontend)
-// Wir verwenden die Breite für beide Dimensionen, um Verzerrung zu vermeiden
-const normalizeQrArea = (
-  qrArea: QrArea | null | undefined,
-  pageWidth: number,
-  pageHeight: number
-): QrArea => {
-  const source = qrArea || DEFAULT_QR_AREA;
-  const x = clamp(source.x ?? 0, 0, 1);
-  const y = clamp(source.y ?? 0, 0, 1);
-  // Verwende width für beide Dimensionen, da QR-Areas quadratisch sind
-  const size = clamp(source.width ?? 0.25, 0.02, 1);
-  
-  // Für X und width: verwende pageWidth (horizontale Skalierung)
-  // Für Y: verwende pageHeight (vertikale Skalierung)
-  // Für height: verwende die gleiche Pixel-Größe wie width (quadratisch)
-  const normalizedWidth = size * pageWidth;
-  const normalizedHeight = normalizedWidth; // Quadratisch: height = width
-  
+  // PDF-Viewer hat einen 108px Rand auf allen Seiten im Frontend
+  // Frontend-Koordinaten sind 0-1 relativ zum Canvas (Template + 2*108px Rand)
+  const pdfViewerMargin = 108;
+  const canvasWidth = templateWidth + (2 * pdfViewerMargin);
+  const canvasHeight = templateHeight + (2 * pdfViewerMargin);
+
+  // Konvertiere relative Koordinaten (0-1) zu Canvas-Pixeln
+  const canvasX = frontendArea.x * canvasWidth;
+  const canvasY = frontendArea.y * canvasHeight;
+  const canvasWidthArea = frontendArea.width * canvasWidth;
+  const canvasHeightArea = frontendArea.height * canvasHeight;
+
+  // Entferne den PDF-Viewer-Rand (108px auf jeder Seite)
+  const templateX = canvasX - pdfViewerMargin;
+  const templateY = canvasY - pdfViewerMargin;
+
+  // Skaliere auf PDF-Größe
+  const scaleX = pdfWidth / templateWidth;
+  const scaleY = pdfHeight / templateHeight;
+
   return {
-    x: x * pageWidth,
-    y: y * pageHeight,
-    width: normalizedWidth,
-    height: normalizedHeight,
+    x: Math.max(0, templateX * scaleX),
+    y: Math.max(0, templateY * scaleY),
+    width: canvasWidthArea * scaleX,
+    height: canvasHeightArea * scaleY,
   };
 };
 
@@ -556,120 +552,36 @@ const generateTicketPdf = async ({
         ? eventDate
         : null,
   });
-  // Normalisiere Koordinaten relativ zur Template-Seitengröße (wie im Frontend),
-  // dann skaliere auf die tatsächliche PDF-Größe
+  // Template-Größe
   const templateWidth = templatePageWidth || pageWidth;
   const templateHeight = templatePageHeight || pageHeight;
-  const scaleX = pageWidth / templateWidth;
-  const scaleY = pageHeight / templateHeight;
   
-  // PDF-Viewer hat einen 108px Rand auf allen Seiten im Frontend
-  // Die Koordinaten vom Frontend sind relativ zum Canvas MIT Rand
-  // Canvas-Größe = Template-Größe + 2 * 108px
-  // Wir müssen die relativen Koordinaten vom Canvas auf den Template-Inhalt umrechnen
-  const pdfViewerMargin = 108;
-  const canvasWidth = templateWidth + (2 * pdfViewerMargin);
-  const canvasHeight = templateHeight + (2 * pdfViewerMargin);
-  
-  functions.logger.info('generateTicketPdf: QR-Area vor Normalisierung', {
-    qrArea,
-    qrAreaX: qrArea?.x,
-    qrAreaY: qrArea?.y,
-    pageWidth,
-    pageHeight,
-    templatePageWidth,
-    templatePageHeight,
+  // Konvertiere Frontend-Koordinaten zu PDF-Koordinaten (einfach und direkt)
+  const pdfQrArea = convertFrontendToPdfArea(
+    qrArea || DEFAULT_QR_AREA,
     templateWidth,
     templateHeight,
-    canvasWidth,
-    canvasHeight,
-    pdfViewerMargin,
-    scaleX,
-    scaleY,
-    usingDefault: !qrArea,
-    DEFAULT_QR_AREA,
-  });
-  
-  // Anpassen der relativen Koordinaten: Von Canvas-Koordinaten (mit Rand) zu Template-Koordinaten (ohne Rand)
-  // Die Koordinaten sind 0-1 relativ zum Canvas, wir müssen sie auf Template umrechnen
-  const adjustedQrArea = qrArea ? {
-    x: Math.max(0, Math.min(1, (qrArea.x * canvasWidth - pdfViewerMargin) / templateWidth)),
-    y: Math.max(0, Math.min(1, (qrArea.y * canvasHeight - pdfViewerMargin) / templateHeight)),
-    width: (qrArea.width * canvasWidth) / templateWidth,
-    height: (qrArea.height * canvasHeight) / templateHeight,
-  } : null;
-  
-  // Normalisiere relativ zur Template-Größe (nach Anpassung für PDF-Viewer-Rand)
-  const normalizedQrAreaTemplate = normalizeQrArea(
-    adjustedQrArea || DEFAULT_QR_AREA,
-    templateWidth,
-    templateHeight
-  );
-  
-  // Skaliere auf die tatsächliche PDF-Größe
-  const normalizedQrArea = {
-    x: normalizedQrAreaTemplate.x * scaleX,
-    y: normalizedQrAreaTemplate.y * scaleY,
-    width: normalizedQrAreaTemplate.width * scaleX,
-    height: normalizedQrAreaTemplate.height * scaleY,
-  };
-
-  functions.logger.info('generateTicketPdf: QR-Area nach Normalisierung', {
-    normalizedQrArea,
     pageWidth,
-    pageHeight,
-  });
+    pageHeight
+  );
 
-  // QR-Code Größe: Verwende 90% der Area-Größe, damit Platz für Zentrierung bleibt
-  const qrSizeInArea = Math.min(normalizedQrArea.width, normalizedQrArea.height);
-  const qrSize = qrSizeInArea * 0.9; // 90% der Area-Größe für den QR-Code
+  if (!pdfQrArea) {
+    throw new Error('QR-Area konnte nicht konvertiert werden');
+  }
+
+  // QR-Code Größe: Verwende die kleinere Dimension der Area (quadratisch)
+  const qrSize = Math.min(pdfQrArea.width, pdfQrArea.height);
   // Generiere QR-Code mit ausreichender Auflösung (mindestens 200px, maximal 500px)
   const qrImageSize = Math.min(Math.max(200, Math.ceil(qrSize)), 500);
   
   const qrBuffer = await generateQRCodeBuffer(qrData, qrImageSize);
   const qrImage = await doc.embedPng(qrBuffer);
+  
   // Positioniere QR-Code an der oberen linken Ecke der Area
-  // normalizedQrArea.y ist die obere Kante von oben (0 = oben)
-  // PDF verwendet Y von unten, und drawImage y ist die untere Kante des Bildes
-  // Horizontale Position: Linke Kante der Area
-  const qrX = normalizedQrArea.x;
-  
-  // Vertikale Position: Obere Kante der Area
-  // Area obere Kante (von unten): pageHeight - normalizedQrArea.y
-  // QR-Code untere Kante (für drawImage): Obere Kante - qrSize
-  const areaTopYFromBottom = pageHeight - normalizedQrArea.y;
-  const qrY = areaTopYFromBottom - qrSize;
-  
-  functions.logger.info('generateTicketPdf: QR-Code Positionierung - Finale Berechnung', {
-    qrSize,
-    qrX,
-    qrY,
-    calculation: {
-      normalizedX: normalizedQrArea.x,
-      normalizedY: normalizedQrArea.y,
-      normalizedWidth: normalizedQrArea.width,
-      normalizedHeight: normalizedQrArea.height,
-      centerX: normalizedQrArea.x + normalizedQrArea.width / 2,
-      centerYFromTop: normalizedQrArea.y + normalizedQrArea.height / 2,
-      centerYFromBottom: pageHeight - (normalizedQrArea.y + normalizedQrArea.height / 2),
-    },
-    areaBounds: {
-      left: normalizedQrArea.x,
-      right: normalizedQrArea.x + normalizedQrArea.width,
-      topFromTop: normalizedQrArea.y,
-      bottomFromTop: normalizedQrArea.y + normalizedQrArea.height,
-      topFromBottom: pageHeight - normalizedQrArea.y,
-      bottomFromBottom: pageHeight - normalizedQrArea.y - normalizedQrArea.height,
-    },
-    qrBounds: {
-      left: qrX,
-      right: qrX + qrSize,
-      bottomFromBottom: qrY,
-      topFromBottom: qrY + qrSize,
-      centerX: qrX + qrSize / 2,
-      centerYFromBottom: qrY + qrSize / 2,
-    },
-  });
+  // pdfQrArea.x ist von links, pdfQrArea.y ist von oben (wie im Frontend)
+  // PDF drawImage verwendet y von unten, also: pageHeight - y - height
+  const qrX = pdfQrArea.x;
+  const qrY = pageHeight - pdfQrArea.y - qrSize; // Obere Kante der Area minus QR-Höhe
   
   page.drawImage(qrImage, {
     x: qrX,
@@ -683,70 +595,22 @@ const generateTicketPdf = async ({
   const fontSize = 12;
   const textColor = rgb(0, 0, 0);
   
-  // Anpassen der relativen Koordinaten: Von Canvas-Koordinaten (mit Rand) zu Template-Koordinaten (ohne Rand)
-  const adjustedInfoArea = infoArea ? {
-    x: Math.max(0, Math.min(1, (infoArea.x * canvasWidth - pdfViewerMargin) / templateWidth)),
-    y: Math.max(0, Math.min(1, (infoArea.y * canvasHeight - pdfViewerMargin) / templateHeight)),
-    width: (infoArea.width * canvasWidth) / templateWidth,
-    height: (infoArea.height * canvasHeight) / templateHeight,
-  } : null;
-  
-  // Normalisiere InfoArea relativ zur Template-Größe, dann skaliere auf PDF-Größe
-  const normalizedInfoAreaTemplate = normalizeTemplateArea(
-    adjustedInfoArea,
-    templateWidth,
-    templateHeight
-  );
-  
-  // Skaliere auf die tatsächliche PDF-Größe
-  const normalizedInfoArea = normalizedInfoAreaTemplate ? {
-    x: normalizedInfoAreaTemplate.x * scaleX,
-    y: normalizedInfoAreaTemplate.y * scaleY,
-    width: normalizedInfoAreaTemplate.width * scaleX,
-    height: normalizedInfoAreaTemplate.height * scaleY,
-  } : null;
-  
-  // Anpassen der relativen Koordinaten: Von Canvas-Koordinaten (mit Rand) zu Template-Koordinaten (ohne Rand)
-  const adjustedOrderIdArea = orderIdArea ? {
-    x: Math.max(0, Math.min(1, (orderIdArea.x * canvasWidth - pdfViewerMargin) / templateWidth)),
-    y: Math.max(0, Math.min(1, (orderIdArea.y * canvasHeight - pdfViewerMargin) / templateHeight)),
-    width: (orderIdArea.width * canvasWidth) / templateWidth,
-    height: (orderIdArea.height * canvasHeight) / templateHeight,
-  } : null;
-  
-  functions.logger.info('generateTicketPdf: OrderIdArea Normalisierung', {
-    orderIdArea,
-    adjustedOrderIdArea,
+  // Konvertiere Frontend-Koordinaten zu PDF-Koordinaten (einfach und direkt)
+  const pdfInfoArea = convertFrontendToPdfArea(
+    infoArea,
     templateWidth,
     templateHeight,
-    canvasWidth,
-    canvasHeight,
-    pdfViewerMargin,
-  });
-  
-  // Normalisiere OrderIdArea relativ zur Template-Größe
-  const normalizedOrderIdAreaTemplate = normalizeTemplateArea(
-    adjustedOrderIdArea,
-    templateWidth,
-    templateHeight
+    pageWidth,
+    pageHeight
   );
   
-  // Skaliere auf die tatsächliche PDF-Größe (108px-Anpassung ist bereits in adjustedOrderIdArea enthalten)
-  const normalizedOrderIdArea = normalizedOrderIdAreaTemplate ? {
-    x: normalizedOrderIdAreaTemplate.x * scaleX,
-    y: normalizedOrderIdAreaTemplate.y * scaleY,
-    width: normalizedOrderIdAreaTemplate.width * scaleX,
-    height: normalizedOrderIdAreaTemplate.height * scaleY,
-  } : null;
-  
-  functions.logger.info('generateTicketPdf: OrderIdArea nach Normalisierung', {
-    normalizedOrderIdAreaTemplate,
-    normalizedOrderIdArea,
+  const pdfOrderIdArea = convertFrontendToPdfArea(
+    orderIdArea,
+    templateWidth,
+    templateHeight,
     pageWidth,
-    pageHeight,
-    scaleX,
-    scaleY,
-  });
+    pageHeight
+  );
   
   // Baue Info-Zeilen auf, wobei nur nicht-leere Werte hinzugefügt werden
   const infoLines: string[] = [];
@@ -808,20 +672,20 @@ const generateTicketPdf = async ({
   functions.logger.info('generateTicketPdf: Final info lines', {
     infoLinesCount: infoLines.length,
     infoLines,
-    hasNormalizedInfoArea: !!normalizedInfoArea,
-    normalizedInfoArea,
+    hasPdfInfoArea: !!pdfInfoArea,
+    pdfInfoArea,
   });
   
-  const hasInfoArea = !!normalizedInfoArea && infoLines.length > 0;
+  const hasInfoArea = !!pdfInfoArea && infoLines.length > 0;
 
-  if (hasInfoArea && normalizedInfoArea) {
+  if (hasInfoArea && pdfInfoArea) {
     functions.logger.info('generateTicketPdf: Zeichne Info-Lines in InfoArea', {
-      area: normalizedInfoArea,
+      area: pdfInfoArea,
       linesCount: infoLines.length,
     });
     drawTicketInfoText({
       page,
-      area: normalizedInfoArea,
+      area: pdfInfoArea as QrArea, // PdfArea hat die gleiche Struktur wie QrArea
       lines: infoLines,
       font,
       fontSize,
@@ -893,60 +757,32 @@ const generateTicketPdf = async ({
 
   // Zeichne Bestellnummer in definierter Area (falls vorhanden)
   if (orderId) {
-    functions.logger.info('generateTicketPdf: Zeichne Bestellnummer', {
-      orderId,
-      hasNormalizedOrderIdArea: !!normalizedOrderIdArea,
-      normalizedOrderIdArea,
-      pageWidth,
-      pageHeight,
-    });
-    
-    if (normalizedOrderIdArea) {
-      try {
-        // Bestellnummer-Box: Genau wie im Editor (font-size: 0.5rem, padding: 0.2rem 0.3rem)
-        // 0.5rem = 0.5 * 16px = 8px ≈ 6pt
-        const orderIdFontSize = 6;
-        // Padding: 0.2rem oben/unten = 2.5pt, 0.3rem links/rechts = 3.5pt
-        const orderIdPaddingX = 3.5;
-        const orderIdPaddingY = 2.5;
-        
-        const orderIdText = `Bestellnummer: ${orderId}`;
-        
-        // X-Position: Obere linke Ecke der Box + Padding (wie im Editor)
-        const textX = normalizedOrderIdArea.x + orderIdPaddingX;
-        
-        // Y-Position: Obere linke Ecke der Box + Padding
-        // normalizedOrderIdArea.y ist die obere Kante der Box, gemessen von OBEN
-        // Im PDF: Y=0 ist UNTEN, also ist die obere Kante bei pageHeight - normalizedOrderIdArea.y
-        // Die obere Kante des Textes soll bei pageHeight - normalizedOrderIdArea.y - paddingY sein
-        // drawText verwendet die Basislinie: Diese ist etwa 0.73 * fontSize unter der oberen Kante (Helvetica Ascender)
-        const topEdgeY = pageHeight - normalizedOrderIdArea.y - orderIdPaddingY;
-        const textY = topEdgeY - (orderIdFontSize * 0.73);
-        
-        // Zeichne einzeiligen Text (obere linke Ecke wie im Editor)
-        page.drawText(orderIdText, {
-          x: textX,
-          y: textY,
-          size: orderIdFontSize,
-          font,
-          color: textColor,
-        });
-      } catch (orderIdErr) {
-        functions.logger.warn('Fehler beim Zeichnen der Bestellnummer in Area, verwende Fallback', {
-          error: orderIdErr instanceof Error ? orderIdErr.message : String(orderIdErr),
-          stack: orderIdErr instanceof Error ? orderIdErr.stack : undefined,
-        });
-        // Fallback: Zeichne an alter Position
-        if (infoLines.length === 0) {
-    page.drawText(`Bestellnummer: ${orderId}`, {
-      x: 50,
-      y: 36,
-      size: fontSize - 2,
-      font,
-      color: textColor,
-    });
-        }
-      }
+    if (pdfOrderIdArea) {
+      // Bestellnummer-Box: Genau wie im Editor (font-size: 0.5rem, padding: 0.2rem 0.3rem)
+      // 0.5rem = 0.5 * 16px = 8px ≈ 6pt
+      const orderIdFontSize = 6;
+      // Padding: 0.2rem oben/unten = 2.5pt, 0.3rem links/rechts = 3.5pt
+      const orderIdPaddingX = 3.5;
+      const orderIdPaddingY = 2.5;
+      
+      const orderIdText = `Bestellnummer: ${orderId}`;
+      
+      // X-Position: Linke Kante der Box + Padding
+      const textX = pdfOrderIdArea.x + orderIdPaddingX;
+      
+      // Y-Position: Obere Kante der Box + Padding
+      // pdfOrderIdArea.y ist von oben gemessen (wie im Frontend)
+      // PDF drawText verwendet y von unten, also: pageHeight - y - paddingY
+      // drawText verwendet die Basislinie, also müssen wir die Font-Size abziehen
+      const textY = pageHeight - pdfOrderIdArea.y - orderIdPaddingY - orderIdFontSize;
+      
+      page.drawText(orderIdText, {
+        x: textX,
+        y: textY,
+        size: orderIdFontSize,
+        font,
+        color: textColor,
+      });
     } else {
       functions.logger.info('generateTicketPdf: Keine OrderIdArea definiert, verwende Fallback wenn keine InfoLines', {
         infoLinesCount: infoLines.length,

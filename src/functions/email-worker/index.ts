@@ -110,6 +110,8 @@ interface PdfArea {
   y: number; // Von oben in Pixeln (nicht von unten!)
   width: number; // Breite in Pixeln
   height: number; // Höhe in Pixeln
+  fontSize?: number; // Optionale Schriftgröße in Pixeln (für InfoArea)
+  lineSpacing?: number; // Optionaler Zeilenabstand in Pixeln (für InfoArea)
 }
 
 const convertFrontendToPdfArea = (
@@ -125,12 +127,30 @@ const convertFrontendToPdfArea = (
 
   // Frontend-Koordinaten sind 0-1 relativ zum Bild (PNG füllt Canvas, beginnt bei 0,0)
   // Einfach direkt auf PDF-Größe skalieren
-  return {
+  const result: PdfArea = {
     x: frontendArea.x * pdfWidth,
     y: frontendArea.y * pdfHeight,
     width: frontendArea.width * pdfWidth,
     height: frontendArea.height * pdfHeight,
   };
+  
+  // Skaliere fontSize und lineSpacing von Frontend-Canvas-Größe auf PDF-Größe
+  // Frontend-Schriftgröße ist in Browser-Pixeln (basierend auf Canvas-Größe)
+  // PDF-Schriftgröße sollte relativ zur PDF-Größe sein
+  // Da templateWidth/Height die tatsächliche Bildgröße ist und pdfWidth/Height die PDF-Größe,
+  // skaliere die Schriftgröße proportional
+  if (frontendArea.fontSize !== undefined && templateWidth > 0) {
+    // Skaliere von Frontend-Canvas-Pixeln zu PDF-Pixeln
+    // Annahme: Frontend-Schriftgröße bezieht sich auf templateWidth (Bildbreite)
+    const scaleX = pdfWidth / templateWidth;
+    result.fontSize = frontendArea.fontSize * scaleX;
+  }
+  if (frontendArea.lineSpacing !== undefined && templateWidth > 0) {
+    const scaleX = pdfWidth / templateWidth;
+    result.lineSpacing = frontendArea.lineSpacing * scaleX;
+  }
+  
+  return result;
 };
 
 const toValidDate = (

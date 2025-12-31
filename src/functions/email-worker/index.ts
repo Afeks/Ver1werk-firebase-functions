@@ -418,10 +418,10 @@ const loadTicketDesignSettings = async (
 
 interface TemplateAsset {
   buffer: Buffer;
-  type: 'pdf' | 'png' | 'jpg';
+  type: 'png' | 'jpg'; // Nur Bildtypen, PDF wird im Frontend zu PNG konvertiert
 }
 
-// Lädt Template-Datei von URL (PDF oder Bild)
+// Lädt Template-Datei von URL (erwartet PNG oder JPG, PDF sollte bereits im Frontend konvertiert sein)
 const downloadTemplateAsset = async (
   url: string
 ): Promise<TemplateAsset | null> => {
@@ -436,16 +436,14 @@ const downloadTemplateAsset = async (
     const contentType = response.headers.get('content-type')?.toLowerCase() || '';
     const normalizedUrl = url.toLowerCase();
 
-    let type: TemplateAsset['type'] = 'jpg';
-    if (contentType.includes('pdf') || normalizedUrl.endsWith('.pdf')) {
-      type = 'pdf';
-    } else if (contentType.includes('png') || normalizedUrl.endsWith('.png')) {
-      type = 'png';
+    if (contentType.includes('png') || normalizedUrl.endsWith('.png')) {
+      return { buffer, type: 'png' };
     } else if (contentType.includes('jpg') || contentType.includes('jpeg') || normalizedUrl.endsWith('.jpg') || normalizedUrl.endsWith('.jpeg')) {
-      type = 'jpg';
+      return { buffer, type: 'jpg' };
+    } else {
+      // Standard: PNG
+      return { buffer, type: 'png' };
     }
-
-    return { buffer, type };
   } catch (err) {
     functions.logger.warn('Fehler beim Laden der Ticket-Vorlage:', err);
     return null;
@@ -504,22 +502,8 @@ const generateTicketPdf = async ({
   let pageHeight = 842;
   let page;
 
-  if (templateAsset?.type === 'pdf') {
-    try {
-      const templateDoc = await PDFDocument.load(templateAsset.buffer);
-      const [copiedPage] = await doc.copyPages(templateDoc, [0]);
-      page = copiedPage;
-      doc.addPage(page);
-      pageWidth = page.getWidth();
-      pageHeight = page.getHeight();
-    } catch (err) {
-      functions.logger.warn('Fehler beim Einbetten der PDF-Vorlage:', err);
-      page = doc.addPage([pageWidth, pageHeight]);
-    }
-  } else if (
-    templateAsset?.type === 'png' ||
-    templateAsset?.type === 'jpg'
-  ) {
+  // Alle Templates werden jetzt als Bild behandelt (PDF wurde bereits zu PNG konvertiert)
+  if (templateAsset && (templateAsset.type === 'png' || templateAsset.type === 'jpg')) {
     try {
       const image =
         templateAsset.type === 'png'
@@ -539,6 +523,7 @@ const generateTicketPdf = async ({
       page = doc.addPage([pageWidth, pageHeight]);
     }
   } else {
+    // Fallback: Leere Seite
     page = doc.addPage([pageWidth, pageHeight]);
   }
 

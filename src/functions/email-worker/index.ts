@@ -571,19 +571,10 @@ const generateTicketPdf = async ({
   }
 
   // QR-Code generieren und einfügen
-  const normalizedEventDate = toValidDate(eventDate);
-
-  // QR-Code muss OrderID und TicketID enthalten (seatId wird nicht benötigt)
+  // QR-Code enthält NUR orderId und ticketId
   const qrPayload = {
     orderId: orderId || null,
     ticketId: ticketId || null,
-    ticketName,
-    seatLabel,
-    eventDate: normalizedEventDate
-      ? normalizedEventDate.toISOString()
-      : typeof eventDate === 'string'
-        ? eventDate
-        : null,
   };
 
   functions.logger.info('generateTicketPdf: QR-Code Payload', {

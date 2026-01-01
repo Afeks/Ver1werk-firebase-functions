@@ -901,52 +901,79 @@ const buildTicketAttachments = async (
   } = emailData.context;
 
   // Lade die Order, um die einzelnen ticketId's zu erhalten
+  // Retry-Mechanismus, da es zu Race Conditions kommen kann (Order wird geschrieben, während E-Mail in Queue gestellt wird)
   let orderTickets: Array<{ ticketId: string; originalTicketId?: string; selectedSeats?: Array<any> }> = [];
   if (orderId) {
-    try {
-      const orderPath = `${ASSOCIATIONS_COLLECTION}/${associationId}/orders/${orderId}`;
-      functions.logger.info('buildTicketAttachments: Versuche Order zu laden', {
-        associationId,
-        orderId,
-        orderPath,
-      });
-      
-      const orderDoc = await admin
-        .firestore()
-        .collection(ASSOCIATIONS_COLLECTION)
-        .doc(associationId)
-        .collection('orders')
-        .doc(orderId)
-        .get();
-      
-      functions.logger.info('buildTicketAttachments: Order-Dokument-Abfrage abgeschlossen', {
-        orderId,
-        exists: orderDoc.exists,
-        hasData: !!orderDoc.data(),
-      });
-      
-      if (orderDoc.exists) {
-        const orderData = orderDoc.data();
-        orderTickets = orderData?.tickets || [];
-        functions.logger.info('buildTicketAttachments: Order geladen', {
-          orderId,
-          ticketsCount: orderTickets.length,
-          tickets: orderTickets.map(t => ({ ticketId: t.ticketId, originalTicketId: t.originalTicketId }))
-        });
-      } else {
-        functions.logger.warn('buildTicketAttachments: Order nicht gefunden', { 
+    const maxRetries = 5;
+    const retryDelayMs = 500; // 500ms zwischen Retries
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const orderPath = `${ASSOCIATIONS_COLLECTION}/${associationId}/orders/${orderId}`;
+        functions.logger.info(`buildTicketAttachments: Versuche Order zu laden (Versuch ${attempt}/${maxRetries})`, {
           associationId,
           orderId,
           orderPath,
+          attempt,
         });
+        
+        const orderDoc = await admin
+          .firestore()
+          .collection(ASSOCIATIONS_COLLECTION)
+          .doc(associationId)
+          .collection('orders')
+          .doc(orderId)
+          .get();
+        
+        functions.logger.info(`buildTicketAttachments: Order-Dokument-Abfrage abgeschlossen (Versuch ${attempt})`, {
+          orderId,
+          exists: orderDoc.exists,
+          hasData: !!orderDoc.data(),
+          attempt,
+        });
+        
+        if (orderDoc.exists) {
+          const orderData = orderDoc.data();
+          orderTickets = orderData?.tickets || [];
+          functions.logger.info('buildTicketAttachments: Order geladen', {
+            orderId,
+            ticketsCount: orderTickets.length,
+            attempt,
+            tickets: orderTickets.map(t => ({ ticketId: t.ticketId, originalTicketId: t.originalTicketId }))
+          });
+          break; // Order gefunden, Retry-Schleife beenden
+        } else {
+          if (attempt < maxRetries) {
+            functions.logger.info(`buildTicketAttachments: Order nicht gefunden, warte ${retryDelayMs}ms vor nächstem Versuch`, { 
+              associationId,
+              orderId,
+              orderPath,
+              attempt,
+              nextAttempt: attempt + 1,
+            });
+            await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+          } else {
+            functions.logger.warn('buildTicketAttachments: Order nach allen Versuchen nicht gefunden', { 
+              associationId,
+              orderId,
+              orderPath,
+              attempts: maxRetries,
+            });
+          }
+        }
+      } catch (err) {
+        functions.logger.error(`buildTicketAttachments: Fehler beim Laden der Order (Versuch ${attempt})`, {
+          associationId,
+          orderId,
+          attempt,
+          error: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+        if (attempt === maxRetries) {
+          throw err; // Wirf Fehler nur beim letzten Versuch
+        }
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs));
       }
-    } catch (err) {
-      functions.logger.error('buildTicketAttachments: Fehler beim Laden der Order', {
-        associationId,
-        orderId,
-        error: err instanceof Error ? err.message : String(err),
-        stack: err instanceof Error ? err.stack : undefined,
-      });
     }
   } else {
     functions.logger.warn('buildTicketAttachments: Keine orderId vorhanden, kann Order nicht laden');
@@ -1010,11 +1037,21 @@ const buildTicketAttachments = async (
 
   // Wir benötigen immer die Order, um die ticketId's zu erhalten
   if (!orderId) {
+    functions.logger.error('buildTicketAttachments: orderId fehlt', {
+      associationId,
+      hasContext: !!emailData.context,
+      contextKeys: emailData.context ? Object.keys(emailData.context) : [],
+    });
     throw new Error('orderId ist erforderlich für die PDF-Generierung');
   }
   
   if (orderTickets.length === 0) {
-    throw new Error(`Order ${orderId} wurde nicht gefunden oder enthält keine Tickets`);
+    functions.logger.error('buildTicketAttachments: Order nicht gefunden oder enthält keine Tickets', {
+      associationId,
+      orderId,
+      orderTicketsLength: orderTickets.length,
+    });
+    throw new Error(`Order ${orderId} wurde nicht gefunden oder enthält keine Tickets. Bitte stelle sicher, dass die Order existiert und Tickets enthält.`);
   }
   
   const ticketCount = orderTickets.length;

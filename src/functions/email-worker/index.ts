@@ -1021,14 +1021,23 @@ const buildTicketAttachments = async (
     if (useOrderTickets) {
       // Neues Format: Verwende Order-Tickets
       const orderTicket = orderTickets[i];
-      ticketId = orderTicket.ticketId;
+      ticketId = orderTicket?.ticketId || null;
+      
+      functions.logger.info(`buildTicketAttachments: Order Ticket ${i + 1}`, {
+        orderTicketExists: !!orderTicket,
+        ticketId: ticketId,
+        orderTicketKeys: orderTicket ? Object.keys(orderTicket) : [],
+        orderTicketData: orderTicket ? { ticketId: orderTicket.ticketId, originalTicketId: orderTicket.originalTicketId } : null
+      });
+      
       // selectedSeats ist ein Array, nimm das erste Element (sollte nur eines sein)
-      seat = orderTicket.selectedSeats && orderTicket.selectedSeats.length > 0 
+      seat = orderTicket?.selectedSeats && orderTicket.selectedSeats.length > 0 
         ? orderTicket.selectedSeats[0] 
         : null;
     } else {
       // Altes Format: Verwende seatList Array
       seat = seatArray[i];
+      functions.logger.warn(`buildTicketAttachments: Verwende altes Format (useOrderTickets=false) für Ticket ${i + 1}, ticketId wird nicht verfügbar sein`);
     }
     
     // Nur Sitzplatz-Label hinzufügen, wenn tatsächlich ein Sitzplatz vorhanden ist
@@ -1055,6 +1064,13 @@ const buildTicketAttachments = async (
     });
 
     try {
+      functions.logger.info(`buildTicketAttachments: Rufe generateTicketPdf auf für Ticket ${i + 1}`, {
+        ticketId,
+        orderId,
+        hasTicketId: !!ticketId,
+        hasOrderId: !!orderId,
+      });
+      
       const pdfBuffer = await generateTicketPdf({
         templateAsset,
         qrArea,

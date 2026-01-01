@@ -25,6 +25,7 @@ interface TicketContext {
   ticketTemplateQrArea?: QrArea | null;
   ticketTemplateInfoArea?: QrArea | null;
   ticketTemplateOrderIdArea?: QrArea | null;
+  ticketEmailAttachments?: Array<{ url: string; filename: string }>;
 }
 
 interface EmailQueueDocument {
@@ -892,6 +893,7 @@ const buildTicketAttachments = async (
     ticketTemplateQrArea,
     ticketTemplateInfoArea,
     ticketTemplateOrderIdArea,
+    ticketEmailAttachments,
   } = emailData.context;
 
   functions.logger.info('buildTicketAttachments: Context-Daten', {
@@ -953,6 +955,30 @@ const buildTicketAttachments = async (
 
   const attachments: Array<{ filename: string; content: Buffer }> = [];
   const seatArray = Array.isArray(seatList) ? seatList : [];
+
+  // Lade zusätzliche Anhänge (einmal pro Email, nicht pro Ticket)
+  const additionalAttachments: Array<{ url: string; filename: string }> = 
+    Array.isArray(ticketEmailAttachments) ? ticketEmailAttachments : [];
+  
+  for (const attachment of additionalAttachments) {
+    try {
+      const response = await fetch(attachment.url);
+      if (!response.ok) {
+        functions.logger.warn(`Fehler beim Laden des Anhangs ${attachment.filename}: HTTP ${response.status}`);
+        continue;
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      attachments.push({
+        filename: attachment.filename,
+        content: buffer
+      });
+      functions.logger.info(`Zusätzlicher Anhang hinzugefügt: ${attachment.filename}`);
+    } catch (err) {
+      functions.logger.warn(`Fehler beim Laden des Anhangs ${attachment.filename}:`, err);
+      // Weiter mit nächstem Anhang, auch wenn einer fehlschlägt
+    }
+  }
 
   // Wenn mehrere Tickets, erstelle für jedes ein PDF
   const ticketCount = quantity || seatArray.length || 1;

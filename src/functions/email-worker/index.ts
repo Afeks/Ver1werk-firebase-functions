@@ -909,7 +909,7 @@ const buildTicketAttachments = async (
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const orderPath = `${ASSOCIATIONS_COLLECTION}/${associationId}/orders/${orderId}`;
+        const orderPath = `${ASSOCIATIONS_COLLECTION}/${associationId}/ticketOrders/${orderId}`;
         functions.logger.info(`buildTicketAttachments: Versuche Order zu laden (Versuch ${attempt}/${maxRetries})`, {
           associationId,
           orderId,
@@ -921,7 +921,7 @@ const buildTicketAttachments = async (
           .firestore()
           .collection(ASSOCIATIONS_COLLECTION)
           .doc(associationId)
-          .collection('orders')
+          .collection('ticketOrders')
           .doc(orderId)
           .get();
         

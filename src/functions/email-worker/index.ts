@@ -522,6 +522,7 @@ const generateTicketPdf = async ({
   seatLabel,
   seatId,
   orderId,
+  ticketId,
   templatePageWidth,
   templatePageHeight,
 }: {
@@ -535,6 +536,7 @@ const generateTicketPdf = async ({
   seatLabel: string | null;
   seatId: string | null;
   orderId?: string;
+  ticketId?: string | null;
   templatePageWidth?: number | null;
   templatePageHeight?: number | null;
 }): Promise<Buffer> => {
@@ -573,6 +575,7 @@ const generateTicketPdf = async ({
 
   const qrData = JSON.stringify({
     orderId: orderId || null,
+    ticketId: ticketId || null,
     seatId: seatId || null,
     ticketName,
     seatLabel,
@@ -899,6 +902,37 @@ const buildTicketAttachments = async (
     ticketEmailAttachments,
   } = emailData.context;
 
+  // Lade die Order, um die einzelnen ticketId's zu erhalten
+  let orderTickets: Array<{ ticketId: string; originalTicketId?: string; selectedSeats?: Array<any> }> = [];
+  if (orderId) {
+    try {
+      const orderDoc = await admin
+        .firestore()
+        .collection(ASSOCIATIONS_COLLECTION)
+        .doc(associationId)
+        .collection('orders')
+        .doc(orderId)
+        .get();
+      
+      if (orderDoc.exists) {
+        const orderData = orderDoc.data();
+        orderTickets = orderData?.tickets || [];
+        functions.logger.info('buildTicketAttachments: Order geladen', {
+          orderId,
+          ticketsCount: orderTickets.length,
+          tickets: orderTickets.map(t => ({ ticketId: t.ticketId, originalTicketId: t.originalTicketId }))
+        });
+      } else {
+        functions.logger.warn('buildTicketAttachments: Order nicht gefunden', { orderId });
+      }
+    } catch (err) {
+      functions.logger.error('buildTicketAttachments: Fehler beim Laden der Order', {
+        orderId,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
   functions.logger.info('buildTicketAttachments: Context-Daten', {
     orderId,
     ticketName,
@@ -959,13 +993,17 @@ const buildTicketAttachments = async (
   const attachments: Array<{ filename: string; content: Buffer }> = [];
   const seatArray = Array.isArray(seatList) ? seatList : [];
 
-  // Wenn mehrere Tickets, erstelle für jedes ein PDF
-  const ticketCount = quantity || seatArray.length || 1;
+  // Wenn Order-Tickets vorhanden sind, verwende diese (neues Format mit einzelnen ticketId's)
+  // Sonst verwende das alte Format mit quantity
+  const useOrderTickets = orderTickets.length > 0;
+  const ticketCount = useOrderTickets ? orderTickets.length : (quantity || seatArray.length || 1);
 
   functions.logger.info('buildTicketAttachments: Starte PDF-Generierung', {
     ticketCount,
     quantity,
     seatArrayLength: seatArray.length,
+    orderTicketsCount: orderTickets.length,
+    useOrderTickets,
     templateType: templateAsset?.type || 'none',
     hasQrArea: !!qrArea,
     hasInfoArea: !!infoArea,
@@ -977,20 +1015,37 @@ const buildTicketAttachments = async (
   });
 
   for (let i = 0; i < ticketCount; i++) {
-    const seat = seatArray[i];
+    let seat: any = null;
+    let ticketId: string | null = null;
+    
+    if (useOrderTickets) {
+      // Neues Format: Verwende Order-Tickets
+      const orderTicket = orderTickets[i];
+      ticketId = orderTicket.ticketId;
+      // selectedSeats ist ein Array, nimm das erste Element (sollte nur eines sein)
+      seat = orderTicket.selectedSeats && orderTicket.selectedSeats.length > 0 
+        ? orderTicket.selectedSeats[0] 
+        : null;
+    } else {
+      // Altes Format: Verwende seatList Array
+      seat = seatArray[i];
+    }
+    
     // Nur Sitzplatz-Label hinzufügen, wenn tatsächlich ein Sitzplatz vorhanden ist
     // Wenn kein Sitzplan vorhanden ist (seat ist undefined), sollte kein Label angezeigt werden
     const seatLabel = seat?.label || seat?.number || seat?.id || null;
-    // Sitzplatz-ID für QR-Code (priorisiere id, dann number, dann label)
-    const seatId = seat?.id || seat?.number || seat?.label || null;
+    // Sitzplatz-ID für QR-Code: Verwende die tatsächliche ID des Sitzplatzes
+    const seatId = seat?.id || null;
 
     functions.logger.info(`Generiere PDF für Ticket ${i + 1}`, {
+      ticketId,
       seatLabel,
       seatId,
       seatLabelType: typeof seatLabel,
       seat,
       hasSeat: !!seat,
       seatKeys: seat ? Object.keys(seat) : [],
+      useOrderTickets,
       eventDate,
       eventDateType: typeof eventDate,
       eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
@@ -1011,6 +1066,7 @@ const buildTicketAttachments = async (
         seatLabel,
         seatId,
         orderId,
+        ticketId: ticketId || null,
         templatePageWidth: ticketTemplatePageWidth || null,
         templatePageHeight: ticketTemplatePageHeight || null,
       });

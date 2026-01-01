@@ -573,10 +573,10 @@ const generateTicketPdf = async ({
   // QR-Code generieren und einfügen
   const normalizedEventDate = toValidDate(eventDate);
 
-  const qrData = JSON.stringify({
+  // QR-Code muss OrderID und TicketID enthalten (seatId wird nicht benötigt)
+  const qrPayload = {
     orderId: orderId || null,
     ticketId: ticketId || null,
-    seatId: seatId || null,
     ticketName,
     seatLabel,
     eventDate: normalizedEventDate
@@ -584,7 +584,16 @@ const generateTicketPdf = async ({
       : typeof eventDate === 'string'
         ? eventDate
         : null,
+  };
+
+  functions.logger.info('generateTicketPdf: QR-Code Payload', {
+    orderId: qrPayload.orderId,
+    ticketId: qrPayload.ticketId,
+    hasOrderId: !!qrPayload.orderId,
+    hasTicketId: !!qrPayload.ticketId,
   });
+
+  const qrData = JSON.stringify(qrPayload);
   // Template-Größe
   const templateWidth = templatePageWidth || pageWidth;
   const templateHeight = templatePageHeight || pageHeight;

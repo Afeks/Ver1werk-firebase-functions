@@ -74,6 +74,11 @@ interface QrArea {
   height: number;
   fontSize?: number; // Optionale Schriftgröße in Pixeln (für InfoArea)
   lineSpacing?: number; // Optionaler Zeilenabstand in Pixeln (für InfoArea)
+  lineVisibility?: {
+    ticketName?: boolean;
+    eventDate?: boolean;
+    seatLabel?: boolean;
+  }; // Optionale Sichtbarkeit der Info-Zeilen
 }
 
 const DEFAULT_QR_AREA: QrArea = {
@@ -112,6 +117,11 @@ interface PdfArea {
   height: number; // Höhe in Pixeln
   fontSize?: number; // Optionale Schriftgröße in Pixeln (für InfoArea)
   lineSpacing?: number; // Optionaler Zeilenabstand in Pixeln (für InfoArea)
+  lineVisibility?: {
+    ticketName?: boolean;
+    eventDate?: boolean;
+    seatLabel?: boolean;
+  }; // Optionale Sichtbarkeit der Info-Zeilen
 }
 
 const convertFrontendToPdfArea = (
@@ -142,6 +152,9 @@ const convertFrontendToPdfArea = (
   }
   if (frontendArea.lineSpacing !== undefined) {
     result.lineSpacing = frontendArea.lineSpacing;
+  }
+  if (frontendArea.lineVisibility !== undefined) {
+    result.lineVisibility = frontendArea.lineVisibility;
   }
   
   return result;
@@ -638,23 +651,36 @@ const generateTicketPdf = async ({
   );
   
   // Baue Info-Zeilen auf, wobei nur nicht-leere Werte hinzugefügt werden
+  // Berücksichtige lineVisibility aus infoArea, falls vorhanden
+  const lineVisibility = infoArea?.lineVisibility || {
+    ticketName: true,
+    eventDate: true,
+    seatLabel: true
+  };
+  
   const infoLines: string[] = [];
   functions.logger.info('generateTicketPdf: Starte Info-Lines Aufbau', {
     ticketName,
     eventDate,
     eventDateType: typeof eventDate,
     eventDateValue: eventDate ? String(eventDate) : 'null/undefined',
-    eventDateConstructor: eventDate ? eventDate.constructor?.name : 'null/undefined',
     seatLabel,
     seatLabelType: typeof seatLabel,
+    lineVisibility,
   });
   
-  if (ticketName && ticketName.trim()) {
+  // Ticket-Name hinzufügen (nur wenn sichtbar)
+  if (lineVisibility.ticketName !== false && ticketName && ticketName.trim()) {
     infoLines.push(ticketName.trim());
     functions.logger.info('generateTicketPdf: Ticket-Name hinzugefügt', { ticketName: ticketName.trim() });
+  } else {
+    functions.logger.info('generateTicketPdf: Ticket-Name wird übersprungen', { 
+      visible: lineVisibility.ticketName !== false,
+      hasTicketName: !!ticketName && ticketName.trim().length > 0
+    });
   }
   
-  // Event-Datum formatieren
+  // Event-Datum formatieren und hinzufügen (nur wenn sichtbar)
   const dateText = formatEventDateText(eventDate);
   functions.logger.info('generateTicketPdf: Date formatting', {
     eventDate,
@@ -664,19 +690,17 @@ const generateTicketPdf = async ({
     dateText,
     hasDateText: !!dateText && dateText.trim().length > 0,
   });
-  if (dateText && dateText.trim()) {
+  if (lineVisibility.eventDate !== false && dateText && dateText.trim()) {
     infoLines.push(dateText.trim());
     functions.logger.info('generateTicketPdf: Datum-Text hinzugefügt', { dateText: dateText.trim() });
   } else {
-    functions.logger.warn('generateTicketPdf: Datum-Text wurde NICHT hinzugefügt', {
-      dateText,
-      dateTextLength: dateText?.length || 0,
-      eventDate,
-      eventDateType: typeof eventDate,
+    functions.logger.info('generateTicketPdf: Datum-Text wird übersprungen', {
+      visible: lineVisibility.eventDate !== false,
+      hasDateText: !!dateText && dateText.trim().length > 0
     });
   }
   
-  // Sitzplatz-Label hinzufügen (nur wenn vorhanden)
+  // Sitzplatz-Label hinzufügen (nur wenn sichtbar und vorhanden)
   functions.logger.info('generateTicketPdf: Seat label', {
     seatLabel,
     seatLabelType: typeof seatLabel,
@@ -684,15 +708,15 @@ const generateTicketPdf = async ({
     isUndefined: seatLabel === undefined,
     hasSeatLabel: !!seatLabel && typeof seatLabel === 'string' && seatLabel.trim().length > 0,
   });
-  if (seatLabel && typeof seatLabel === 'string' && seatLabel.trim()) {
+  if (lineVisibility.seatLabel !== false && seatLabel && typeof seatLabel === 'string' && seatLabel.trim()) {
     // Formatiere als "Sitzplatz: {Sitzplatznummer}"
     const formattedSeatLabel = `Sitzplatz: ${seatLabel.trim()}`;
     infoLines.push(formattedSeatLabel);
     functions.logger.info('generateTicketPdf: Sitzplatz-Label hinzugefügt', { seatLabel: formattedSeatLabel });
   } else {
-    functions.logger.warn('generateTicketPdf: Sitzplatz-Label wurde NICHT hinzugefügt', {
-      seatLabel,
-      seatLabelType: typeof seatLabel,
+    functions.logger.info('generateTicketPdf: Sitzplatz-Label wird übersprungen', {
+      visible: lineVisibility.seatLabel !== false,
+      hasSeatLabel: !!seatLabel && typeof seatLabel === 'string' && seatLabel.trim().length > 0
     });
   }
   

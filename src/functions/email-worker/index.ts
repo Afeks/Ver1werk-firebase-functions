@@ -520,6 +520,7 @@ const generateTicketPdf = async ({
   ticketName,
   eventDate,
   seatLabel,
+  seatId,
   orderId,
   templatePageWidth,
   templatePageHeight,
@@ -532,6 +533,7 @@ const generateTicketPdf = async ({
   ticketName: string;
   eventDate?: string | Date | FirebaseFirestore.Timestamp;
   seatLabel: string | null;
+  seatId: string | null;
   orderId?: string;
   templatePageWidth?: number | null;
   templatePageHeight?: number | null;
@@ -570,7 +572,8 @@ const generateTicketPdf = async ({
   const normalizedEventDate = toValidDate(eventDate);
 
   const qrData = JSON.stringify({
-    orderId,
+    orderId: orderId || null,
+    seatId: seatId || null,
     ticketName,
     seatLabel,
     eventDate: normalizedEventDate
@@ -978,9 +981,12 @@ const buildTicketAttachments = async (
     // Nur Sitzplatz-Label hinzufügen, wenn tatsächlich ein Sitzplatz vorhanden ist
     // Wenn kein Sitzplan vorhanden ist (seat ist undefined), sollte kein Label angezeigt werden
     const seatLabel = seat?.label || seat?.number || seat?.id || null;
+    // Sitzplatz-ID für QR-Code (priorisiere id, dann number, dann label)
+    const seatId = seat?.id || seat?.number || seat?.label || null;
 
     functions.logger.info(`Generiere PDF für Ticket ${i + 1}`, {
       seatLabel,
+      seatId,
       seatLabelType: typeof seatLabel,
       seat,
       hasSeat: !!seat,
@@ -1003,6 +1009,7 @@ const buildTicketAttachments = async (
         ticketName,
         eventDate,
         seatLabel,
+        seatId,
         orderId,
         templatePageWidth: ticketTemplatePageWidth || null,
         templatePageHeight: ticketTemplatePageHeight || null,

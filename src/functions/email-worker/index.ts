@@ -685,8 +685,10 @@ const generateTicketPdf = async ({
     hasSeatLabel: !!seatLabel && typeof seatLabel === 'string' && seatLabel.trim().length > 0,
   });
   if (seatLabel && typeof seatLabel === 'string' && seatLabel.trim()) {
-    infoLines.push(seatLabel.trim());
-    functions.logger.info('generateTicketPdf: Sitzplatz-Label hinzugefügt', { seatLabel: seatLabel.trim() });
+    // Formatiere als "Sitzplatz: {Sitzplatznummer}"
+    const formattedSeatLabel = `Sitzplatz: ${seatLabel.trim()}`;
+    infoLines.push(formattedSeatLabel);
+    functions.logger.info('generateTicketPdf: Sitzplatz-Label hinzugefügt', { seatLabel: formattedSeatLabel });
   } else {
     functions.logger.warn('generateTicketPdf: Sitzplatz-Label wurde NICHT hinzugefügt', {
       seatLabel,

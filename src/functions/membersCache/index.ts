@@ -108,6 +108,45 @@ export const onMemberChanged = functions
   });
 
 /**
+ * Firestore Trigger: Wird ausgelöst, wenn ein User in der users Collection aktualisiert wird
+ * Aktualisiert den Cache für alle Associations, in denen der User Mitglied ist
+ */
+export const onUserChanged = functions
+  .region('europe-west1')
+  .firestore
+  .document('users/{userId}')
+  .onUpdate(async (change, context) => {
+    const userId = context.params.userId;
+    const userData = change.after.data();
+    
+    functions.logger.info(`🔄 User ${userId} geändert, aktualisiere Cache für alle betroffenen Associations...`);
+    
+    try {
+      // Hole alle Associations, in denen der User Mitglied ist
+      const associations = userData.associations || [];
+      
+      if (associations.length === 0) {
+        functions.logger.info(`ℹ️ User ${userId} ist in keiner Association, kein Cache-Update nötig`);
+        return;
+      }
+      
+      // Aktualisiere Cache für alle betroffenen Associations
+      const updatePromises = associations.map((associationId: string) => {
+        return updateMembersCache(associationId).catch((error) => {
+          functions.logger.error(`❌ Fehler beim Aktualisieren des Cache für Association ${associationId}:`, error);
+          // Fehler nicht weiterwerfen, damit andere Updates nicht blockiert werden
+        });
+      });
+      
+      await Promise.all(updatePromises);
+      functions.logger.info(`✅ Cache für ${associations.length} Association(s) aktualisiert`);
+    } catch (error) {
+      functions.logger.error(`❌ Fehler beim Aktualisieren des Cache nach User-Änderung:`, error);
+      // Wir werfen den Fehler nicht, damit die Function nicht fehlschlägt
+    }
+  });
+
+/**
  * Callable Function: Manuelles Aktualisieren des Cache (für Initialisierung oder manuelle Aktualisierung)
  */
 export const refreshMembersCache = functions

@@ -22,3 +22,4 @@ export {
   processEmailQueue,
 } from './functions/email-worker';
 export { analyzeReceipt } from './functions/analyzeReceipt';
+export { onMemberChanged, refreshMembersCache } from './functions/membersCache';

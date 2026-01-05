@@ -25,7 +25,7 @@ async function updateMembersCache(associationId: string): Promise<void> {
       const userId = memberData.userId || memberDoc.id;
       
       // Lade User-Daten
-      let userData = {};
+      let userData: any = {};
       try {
         const userDoc = await db.collection('users').doc(userId).get();
         if (userDoc.exists) {
@@ -36,16 +36,16 @@ async function updateMembersCache(associationId: string): Promise<void> {
       }
       
       // Kombiniere Member- und User-Daten (wie in mapMembersFromSnapshot)
-      const firstName = memberData.firstName || userData.firstName || '';
-      const lastName = memberData.lastName || userData.lastName || '';
-      const street = memberData.street || userData.street || '';
-      const houseNumber = memberData.houseNumber || userData.houseNumber || '';
-      const city = memberData.city || userData.city || '';
-      const postalCode = memberData.postalCode || userData.postalCode || '';
-      const country = memberData.country || userData.country || 'Deutschland';
-      const salutation = memberData.salutation || userData.salutation || '';
-      const email = memberData.email || userData.email || '';
-      const birthDate = memberData.birthDate || userData.birthDate;
+      const firstName = memberData.firstName || (userData as any).firstName || '';
+      const lastName = memberData.lastName || (userData as any).lastName || '';
+      const street = memberData.street || (userData as any).street || '';
+      const houseNumber = memberData.houseNumber || (userData as any).houseNumber || '';
+      const city = memberData.city || (userData as any).city || '';
+      const postalCode = memberData.postalCode || (userData as any).postalCode || '';
+      const country = memberData.country || (userData as any).country || 'Deutschland';
+      const salutation = memberData.salutation || (userData as any).salutation || '';
+      const email = memberData.email || (userData as any).email || '';
+      const birthDate = memberData.birthDate || (userData as any).birthDate;
       
       // Konvertiere Timestamps zu ISO-Strings für JSON-Serialisierung
       const processedMember = {

@@ -47,26 +47,47 @@ async function updateMembersCache(associationId: string): Promise<void> {
       const email = memberData.email || (userData as any).email || '';
       const birthDate = memberData.birthDate || (userData as any).birthDate;
       
-      // Konvertiere Timestamps zu ISO-Strings für JSON-Serialisierung
-      const processedMember = {
+      // Speichere nur Felder, die in der Tabelle angezeigt werden
+      // Alle anderen Details werden beim Laden eines einzelnen Members geladen
+      const processedMember: any = {
+        // Basis-Identifikation
         id: userId,
         userId: userId,
-        ...memberData,
-        ...userData,
-        // Überschreibe mit kombinierten Werten
+        
+        // Tabellen-Spalten (persönliche Daten)
+        salutation,
         firstName,
         lastName,
+        nickname: memberData.nickname || '',
+        email,
+        birthDate: birthDate?.toDate ? birthDate.toDate().toISOString() : (typeof birthDate === 'string' ? birthDate : birthDate),
+        
+        // Tabellen-Spalten (Kontakt)
+        phones: Array.isArray(memberData.phones) 
+          ? memberData.phones 
+          : memberData.phone 
+            ? [memberData.phone] 
+            : [],
+        
+        // Tabellen-Spalten (Adresse)
         street,
         houseNumber,
         city,
         postalCode,
         country,
-        salutation,
-        email,
-        // Timestamps konvertieren
+        
+        // Tabellen-Spalten (Bankdaten - verschlüsselt gespeichert)
+        bankName: memberData.bankName || '',
+        iban: memberData.iban || '', // Verschlüsselt
+        bic: memberData.bic || '', // Verschlüsselt
+        bankAccountHolder: memberData.bankAccountHolder || '',
+        
+        // Tabellen-Spalten (Status & Rollen)
+        isActive: memberData.isActive !== undefined ? memberData.isActive : true,
+        roles: memberData.roles || [],
+        
+        // Tabellen-Spalten (Datum)
         joinedAt: memberData.joinedAt?.toDate ? memberData.joinedAt.toDate().toISOString() : (typeof memberData.joinedAt === 'string' ? memberData.joinedAt : null),
-        lastActivity: memberData.lastActivity?.toDate ? memberData.lastActivity.toDate().toISOString() : (typeof memberData.lastActivity === 'string' ? memberData.lastActivity : null),
-        birthDate: birthDate?.toDate ? birthDate.toDate().toISOString() : (typeof birthDate === 'string' ? birthDate : birthDate),
       };
       members.push(processedMember);
     }

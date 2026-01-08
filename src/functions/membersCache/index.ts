@@ -76,10 +76,7 @@ async function updateMembersCache(associationId: string): Promise<void> {
         postalCode,
         country,
         
-        // Tabellen-Spalten (Bankdaten - verschlüsselt gespeichert)
-        bankName: memberData.bankName || '',
-        iban: memberData.iban || '', // Verschlüsselt
-        bic: memberData.bic || '', // Verschlüsselt
+        // Tabellen-Spalten (Bankdaten - nur Kontoinhaber, IBAN/BIC/Bank werden nicht mehr in Tabelle angezeigt)
         bankAccountHolder: memberData.bankAccountHolder || '',
         
         // Tabellen-Spalten (Status & Rollen)

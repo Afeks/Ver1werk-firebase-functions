@@ -1170,22 +1170,69 @@ const buildTicketAttachments = async (
   const additionalAttachments: Array<{ url: string; filename: string }> = 
     Array.isArray(ticketEmailAttachments) ? ticketEmailAttachments : [];
   
+  functions.logger.info('Lade zusätzliche E-Mail-Anhänge', {
+    attachmentsCount: additionalAttachments.length,
+    attachmentUrls: additionalAttachments.map(a => a.url),
+    attachmentFilenames: additionalAttachments.map(a => a.filename),
+  });
+  
   for (const attachment of additionalAttachments) {
     try {
-      const response = await fetch(attachment.url);
-      if (!response.ok) {
-        functions.logger.warn(`Fehler beim Laden des Anhangs ${attachment.filename}: HTTP ${response.status}`);
-        continue;
+      functions.logger.info(`Versuche Anhang zu laden: ${attachment.filename}`, {
+        url: attachment.url,
+      });
+      
+      // Versuche zuerst mit fetch (für öffentliche URLs)
+      let buffer: Buffer;
+      try {
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        buffer = Buffer.from(arrayBuffer);
+        functions.logger.info(`Anhang erfolgreich via fetch geladen: ${attachment.filename}`, {
+          size: buffer.length,
+        });
+      } catch (fetchErr) {
+        // Falls fetch fehlschlägt, versuche Firebase Storage direkt zu verwenden
+        functions.logger.info(`Fetch fehlgeschlagen, versuche Firebase Storage: ${attachment.filename}`, {
+          fetchError: fetchErr instanceof Error ? fetchErr.message : String(fetchErr),
+        });
+        
+        // Extrahiere den Storage-Pfad aus der URL
+        const urlObj = new URL(attachment.url);
+        const pathMatch = urlObj.pathname.match(/\/o\/(.+)/);
+        if (pathMatch) {
+          const encodedPath = pathMatch[1];
+          const storagePath = decodeURIComponent(encodedPath.split('?')[0]);
+          
+          const bucket = admin.storage().bucket();
+          const file = bucket.file(storagePath);
+          const [fileBuffer] = await file.download();
+          buffer = fileBuffer;
+          functions.logger.info(`Anhang erfolgreich via Firebase Storage geladen: ${attachment.filename}`, {
+            storagePath,
+            size: buffer.length,
+          });
+        } else {
+          throw new Error(`Konnte Storage-Pfad nicht aus URL extrahieren: ${attachment.url}`);
+        }
       }
-      const arrayBuffer = await response.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
+      
       attachments.push({
         filename: attachment.filename,
         content: buffer
       });
-      functions.logger.info(`Zusätzlicher Anhang hinzugefügt: ${attachment.filename}`);
+      functions.logger.info(`Zusätzlicher Anhang hinzugefügt: ${attachment.filename}`, {
+        size: buffer.length,
+      });
     } catch (err) {
-      functions.logger.warn(`Fehler beim Laden des Anhangs ${attachment.filename}:`, err);
+      functions.logger.error(`Fehler beim Laden des Anhangs ${attachment.filename}:`, {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+        url: attachment.url,
+      });
       // Weiter mit nächstem Anhang, auch wenn einer fehlschlägt
     }
   }

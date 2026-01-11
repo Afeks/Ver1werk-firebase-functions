@@ -888,6 +888,7 @@ const buildTicketAttachments = async (
 
   const {
     orderId,
+    ticketId: contextTicketId,
     ticketName,
     eventDate,
     associationName,
@@ -1054,11 +1055,34 @@ const buildTicketAttachments = async (
     throw new Error(`Order ${orderId} wurde nicht gefunden oder enthält keine Tickets. Bitte stelle sicher, dass die Order existiert und Tickets enthält.`);
   }
   
-  const ticketCount = orderTickets.length;
+  // Filtere Order-Tickets nach dem spezifischen ticketId aus dem Context
+  // Wenn ticketId im Context vorhanden ist, verwende nur Tickets mit diesem originalTicketId
+  let filteredOrderTickets = orderTickets;
+  if (contextTicketId) {
+    filteredOrderTickets = orderTickets.filter(orderTicket => {
+      const orderTicketId = orderTicket.originalTicketId || orderTicket.ticketId;
+      return orderTicketId === contextTicketId;
+    });
+    
+    functions.logger.info('buildTicketAttachments: Filtere Order-Tickets nach ticketId', {
+      contextTicketId: contextTicketId,
+      totalOrderTickets: orderTickets.length,
+      filteredOrderTickets: filteredOrderTickets.length,
+      filteredTicketIds: filteredOrderTickets.map(t => t.originalTicketId || t.ticketId)
+    });
+  } else {
+    functions.logger.warn('buildTicketAttachments: Kein ticketId im Context, verwende alle Order-Tickets', {
+      orderTicketsCount: orderTickets.length
+    });
+  }
+
+  const ticketCount = filteredOrderTickets.length;
 
   functions.logger.info('buildTicketAttachments: Starte PDF-Generierung', {
     ticketCount,
     orderTicketsCount: orderTickets.length,
+    filteredOrderTicketsCount: filteredOrderTickets.length,
+    contextTicketId: contextTicketId,
     templateType: templateAsset?.type || 'none',
     hasQrArea: !!qrArea,
     hasInfoArea: !!infoArea,
@@ -1070,7 +1094,7 @@ const buildTicketAttachments = async (
   });
 
   for (let i = 0; i < ticketCount; i++) {
-    const orderTicket = orderTickets[i];
+    const orderTicket = filteredOrderTickets[i];
     if (!orderTicket) {
       functions.logger.error(`buildTicketAttachments: Order Ticket ${i + 1} existiert nicht`, {
         ticketCount,
